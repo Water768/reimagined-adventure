@@ -5,7 +5,7 @@
    PERSISTENCE (localStorage)
 ═══════════════════════════════════════ */
 const SAVE_KEY='hearthstead-save';
-const SAVE_VERSION=2;
+const SAVE_VERSION=3;
 let saveGameTimer=null;
 let saveLoadFinished=false;
 let saveLoadSucceeded=false;
@@ -73,7 +73,7 @@ function runAllSaveMigrations(){
     migrateInteriorPan();
     migrateShelfTiers();
     if(typeof migrateApothecaryProcessKey==='function') migrateApothecaryProcessKey();
-    if(typeof migrateFabricItems==='function') migrateFabricItems();
+    if(typeof migrateCleanBandageKey==='function') migrateCleanBandageKey();
   }catch(err){
     console.error('[Hearthstead] Save migration failed:', err);
   }
@@ -88,6 +88,8 @@ function runVersionedSaveMigrations(){
 
 function runPostLoadMigrations(){
   runVersionedSaveMigrations();
+  if(typeof migrateCleanBandageKey==='function') migrateCleanBandageKey();
+  if(typeof migrateLoomRecipeKey==='function') migrateLoomRecipeKey();
 }
 
 function applySavedState(saved){

@@ -332,7 +332,6 @@ function migrateInterior(){
   if(state.interior.cells&&Object.keys(state.interior.cells).length){
     migrateInteriorBuildSlots();
     if(typeof migrateApothecaryTable==='function') migrateApothecaryTable();
-    if(typeof migrateFabricItems==='function') migrateFabricItems();
     if(!isInteriorConnected(state.interior.cells)){
       const {doorwayKey, roomKeys}=collectInteriorRoomKeys();
       state.interior.cells=buildInteriorStackLayout(roomKeys, doorwayKey);

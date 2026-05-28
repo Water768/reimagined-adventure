@@ -1313,6 +1313,7 @@ body {
 #woodcutting-screen.world-overlay,
 #mining-screen.world-overlay,
 #exploring-screen.world-overlay { background: transparent; }
+#farming-screen.world-overlay { background: transparent; }
 #well-screen.world-overlay { background: transparent; }
 .fish-body,
 .wc-body,
@@ -1340,6 +1341,29 @@ body {
 .expedition-req-row {
   display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;
   margin-bottom:4px;
+}
+.expedition-req-row.has-either {
+  grid-template-columns:1fr 2fr;
+}
+.expedition-req-either-wrap {
+  display:flex; flex-direction:column; gap:6px; min-width:0;
+}
+.expedition-req-either-head {
+  font-family:var(--font-ui); font-size:10px; font-weight:600;
+  letter-spacing:0.06em; text-transform:uppercase;
+  color:var(--neb-orange); text-align:center;
+  border:2px solid rgba(200,120,60,0.28); border-radius:2px;
+  background:rgba(200,120,60,0.08); padding:6px 8px;
+}
+.expedition-req-either-pair {
+  display:grid; grid-template-columns:1fr 1fr; gap:8px; min-width:0;
+}
+.expedition-req-box.either-selected {
+  border-color:var(--ui-accent);
+  background:rgba(160,128,224,0.12);
+}
+.expedition-req-box.either-dimmed {
+  opacity:0.55;
 }
 .expedition-req-box {
   border:2px solid rgba(112,72,200,0.22);
@@ -1458,6 +1482,51 @@ body {
 .expedition-trek-walker {
   position:absolute; bottom:34px; left:-12%;
   font-size:48px; line-height:1; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.65));
+  z-index:2;
+}
+.expedition-trek-stars {
+  position:absolute; inset:0; z-index:4; pointer-events:none; overflow:hidden;
+}
+.expedition-trek-star {
+  position:absolute; pointer-events:auto;
+  border:none; margin:0; padding:4px; background:transparent; cursor:pointer;
+  font-size:18px; line-height:1;
+  transform:translate(-50%, -50%) scale(0.28);
+  opacity:0.18;
+  filter:drop-shadow(0 0 2px rgba(255,220,120,0.25));
+  animation:expeditionStarGrow 2.4s ease-out forwards;
+}
+.expedition-trek-star:active { filter:brightness(1.15); }
+.expedition-trek-star.collected {
+  animation:expeditionStarPop 0.5s ease-out forwards;
+  pointer-events:none;
+}
+.expedition-trek-star.expired {
+  animation:expeditionStarMiss 0.45s ease-out forwards;
+  pointer-events:none;
+}
+.expedition-trek-star-sparkle {
+  position:absolute; pointer-events:none; z-index:5;
+  font-size:14px; line-height:1;
+  transform:translate(-50%, -50%) scale(0.6);
+  opacity:0.95;
+  animation:expeditionStarSparkle 0.55s ease-out forwards;
+}
+@keyframes expeditionStarGrow {
+  0% { opacity:0.15; transform:translate(-50%,-50%) scale(0.25); }
+  100% { opacity:1; transform:translate(-50%,-50%) scale(1.45); filter:drop-shadow(0 0 12px rgba(255,235,160,0.95)); }
+}
+@keyframes expeditionStarPop {
+  0% { opacity:1; transform:translate(-50%,-50%) scale(1.25); }
+  100% { opacity:0; transform:translate(-50%,-50%) scale(2.4); filter:drop-shadow(0 0 20px rgba(180,230,255,1)); }
+}
+@keyframes expeditionStarSparkle {
+  0% { opacity:1; transform:translate(-50%,-50%) scale(0.5); }
+  100% { opacity:0; transform:translate(-50%,-50%) scale(1.8) rotate(18deg); }
+}
+@keyframes expeditionStarMiss {
+  0% { opacity:0.85; transform:translate(-50%,-50%) scale(1.1); filter:grayscale(0.2); }
+  100% { opacity:0; transform:translate(-50%,-50%) scale(0.5); filter:grayscale(1); }
 }
 .expedition-trek-label {
   font-family:var(--font-ui); font-size:13px; letter-spacing:0.08em;
@@ -1546,6 +1615,54 @@ body {
   font-family:var(--font-ui); font-size:10px; font-weight:600;
   color:rgba(200,190,230,0.78); text-align:center; margin-top:4px;
   letter-spacing:0.04em; text-shadow:0 1px 3px rgba(0,0,0,0.55);
+}
+.plot-cell.cell-farm { cursor:pointer; overflow:hidden; }
+.plot-cell.cell-farm {
+  background:linear-gradient(180deg,#2a3828 0%,#182018 100%) !important;
+  border-color:rgba(92,140,88,0.42) !important;
+}
+.cell-farm .plot-activity-top { overflow:hidden; height:100%; border-bottom:none; }
+.cell-farm .farm-sprite {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  width:100%; height:100%; pointer-events:none;
+}
+.cell-farm .farm-icon { font-size:34px; line-height:1; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.45)); }
+.cell-farm .farm-label {
+  font-family:var(--font-ui); font-size:10px; font-weight:600;
+  color:rgba(190,220,180,0.82); text-align:center; margin-top:4px;
+  letter-spacing:0.04em; text-shadow:0 1px 3px rgba(0,0,0,0.5);
+}
+.plot-cell.cell-farm.farm-growing .farm-icon { animation:swGlow 1.8s ease-in-out infinite; }
+.plot-cell.cell-farm.farm-ready {
+  border-color:rgba(124,184,96,0.65) !important;
+  box-shadow:0 0 10px rgba(88,168,104,0.35);
+}
+.farm-seed-row {
+  display:flex; align-items:flex-start; gap:10px; width:100%;
+  border:2px solid rgba(112,72,200,0.18); border-radius:2px;
+  background:rgba(255,255,255,0.03); padding:10px; margin-bottom:8px;
+  cursor:pointer; text-align:left;
+}
+.farm-seed-row.selected {
+  border-color:var(--ui-accent);
+  background:rgba(160,128,224,0.12);
+}
+.farm-seed-row.locked { opacity:0.55; cursor:not-allowed; }
+.farm-seed-row:last-child { margin-bottom:0; }
+.farm-seed-icon { font-size:28px; line-height:1; flex-shrink:0; }
+.farm-seed-meta { display:flex; flex-direction:column; gap:4px; min-width:0; flex:1; }
+.farm-seed-sub { font-size:11px; color:var(--ui-text-dim); line-height:1.35; }
+.farm-seed-stock { font-size:11px; line-height:1.35; }
+.farm-growing-card {
+  border:2px solid rgba(112,72,200,0.22); border-radius:2px;
+  background:rgba(255,255,255,0.03); padding:14px; margin-bottom:12px;
+  font-family:var(--font-ui); text-align:center;
+}
+.farm-growing-crop { font-size:22px; font-weight:600; margin-bottom:6px; }
+.farm-growing-batch { font-size:12px; color:var(--ui-text-dim); }
+.farm-progress {
+  font-family:var(--font-ui); font-size:11px; color:var(--ui-text-dim);
+  text-align:center; margin:0 0 10px;
 }
 .plot-cell.cell-well {
   cursor:pointer; overflow:hidden;
@@ -2547,6 +2664,56 @@ body {
   </div>
 </div>
 
+<!-- FARMING SCREEN -->
+<div id="farming-screen" class="screen world-overlay">
+<div class="top-bar">
+    <button class="home-btn" onclick="navHome()">🗺️</button>
+    <div class="top-bar-title">Farming Plot</div>
+    <div class="stat-pill stat-pill-skill" id="farm-skill-pill" tabindex="0">
+      <span class="stat-icon" id="farm-skill-icon">🌱</span>
+      <span class="skill-pill-lvl" id="farm-skill-lvl">1</span>
+      <div class="skill-pill-bar"><div class="skill-pill-fill sk-botany" id="farm-skill-fill" style="height:0%"></div></div>
+      <span class="skill-pill-tip" id="farm-skill-tip"></span>
+    </div>
+    <div class="stat-pill stat-pill-gold" id="gold-pill-farm"><span class="stat-val" id="gold-farm">0</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-farm">0</span>/50</span></div>
+  </div>
+  <div class="top-nav">
+    <button class="nav-btn" onclick="closeFarmScreen()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
+    <button class="nav-btn" onclick="event.stopPropagation();togglePanel('equip')"><span class="nav-btn-icon">⚔️</span><span class="nav-btn-label">EQUIP</span></button>
+  </div>
+  <div class="gather-body activity-panel">
+    <div class="wb-header">
+      <div class="wb-title-row">
+        <span class="wb-icon">🌾</span>
+        <div>
+          <div class="wb-item-name">Farming Plot</div>
+          <div class="wb-item-sub" id="farm-subtitle">Each crop takes 30 minutes to grow</div>
+        </div>
+      </div>
+    </div>
+    <div id="farm-panel-growing" hidden>
+      <div class="farm-growing-card">
+        <div class="farm-growing-crop" id="farm-growing-crop">🌱 Growing</div>
+        <div class="farm-growing-batch" id="farm-growing-batch"></div>
+      </div>
+    </div>
+    <div id="farm-panel-idle">
+      <div class="store-items" style="margin-bottom:12px">
+        <div class="store-items-title">SEED BATCH</div>
+        <div class="expedition-tier-picker" id="farm-batch-picker"></div>
+      </div>
+      <div class="store-items" style="margin-bottom:12px">
+        <div class="store-items-title">SEEDS</div>
+        <div id="farm-seed-list"></div>
+      </div>
+    </div>
+    <div class="farm-progress" id="farm-progress" hidden></div>
+    <div class="fish-status idle" id="farm-status">Choose a seed and how many to plant.</div>
+    <div class="wb-action-area" id="farm-buttons"></div>
+  </div>
+</div>
+
 <!-- WELL SCREEN -->
 <div id="well-screen" class="screen">
 <div class="top-bar">
@@ -2745,6 +2912,7 @@ body {
   <div id="expedition-trek-overlay" class="expedition-trek-overlay" hidden>
     <div class="expedition-trek-scene">
       <div class="expedition-trek-ground"></div>
+      <div class="expedition-trek-stars" id="expedition-trek-stars"></div>
       <div class="expedition-trek-walker" id="expedition-trek-walker">🚶</div>
     </div>
     <div class="expedition-trek-label" id="expedition-trek-label">On expedition…</div>
@@ -3021,6 +3189,7 @@ body {
 <script src="data/water.js"></script>
 <script src="data/furniture.js"></script>
 <script src="data/botany.js"></script>
+<script src="data/farming.js"></script>
 <script src="data/loom.js"></script>
 <script src="data/pets.js"></script>
 <script src="js/constants.js"></script>
@@ -3035,6 +3204,7 @@ body {
 <script src="js/activities.js"></script>
 <script src="js/well.js"></script>
 <script src="js/fire-pit.js"></script>
+<script src="js/farming-plot.js"></script>
 <script src="js/interactions.js"></script>
 <script src="js/botany-table.js"></script>
 <script src="js/loom.js"></script>

@@ -39,6 +39,7 @@ const SCREEN_SKILL_RESOLVERS={
   'spinningwheel-screen':()=>'tailoring',
   'loom-screen':()=>'tailoring',
   'botany-table-screen':()=>typeof getApothecaryActivitySkillKey==='function'?getApothecaryActivitySkillKey():'botany',
+  'farming-screen':()=>'botany',
   'pets-screen':()=>'husbandry',
 };
 
@@ -54,6 +55,7 @@ const SCREEN_SKILL_PREFIX={
   'spinningwheel-screen':'sw',
   'loom-screen':'loom',
   'botany-table-screen':'botany',
+  'farming-screen':'farm',
   'pets-screen':'pets',
 };
 
@@ -106,7 +108,7 @@ function updateActivitySkillDisplays(){
 const INV_COUNT_PILL_IDS=[
   'inv-count-ext','inv-count-int','inv-count-wb','inv-count-sk','inv-count-store',
   'inv-count-fish','inv-count-gather','inv-count-wc','inv-count-mine','inv-count-explore',
-  'inv-count-fp','inv-count-sw','inv-count-loom','inv-count-botany','inv-count-pets','inv-count-well','inv-count-firepit',
+  'inv-count-fp','inv-count-sw','inv-count-loom','inv-count-botany','inv-count-pets','inv-count-well','inv-count-firepit','inv-count-farm',
 ];
 
 function updateInvCountPills(){
@@ -143,7 +145,7 @@ function syncUI(){
     setTimeout(()=>showToast('🗄️ '+n+' store room'+(n===1?'':'s')+' had no space on the map — ghost capacity removed.'),600);
   }
   syncInventoryUI();
-  ['gold-ext','gold-int','gold-wb','gold-sk','gold-store','gold-fish','gold-gather','gold-wc','gold-mine','gold-explore','gold-fp','gold-sw','gold-loom','gold-botany','gold-pets','gold-well','gold-firepit'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=state.gold;});
+  ['gold-ext','gold-int','gold-wb','gold-sk','gold-store','gold-fish','gold-gather','gold-wc','gold-mine','gold-explore','gold-fp','gold-sw','gold-loom','gold-botany','gold-pets','gold-well','gold-firepit','gold-farm'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=state.gold;});
   document.querySelectorAll('.stat-pill-gold').forEach(el=>el.classList.toggle('visible',state.gold>0));
   document.querySelectorAll('.int-cell[data-int-key="fireplace"]').forEach(el=>el.classList.toggle('fireplace-cooking',cook.running));
   document.querySelectorAll('.int-cell[data-int-key="spinningwheel"]').forEach(el=>el.classList.toggle('spinning-wheel-active',spin.running));
@@ -157,6 +159,7 @@ function syncUI(){
   updateSpinningWheelCell();
   if(typeof updateApothecaryCellQuickAction==='function') updateApothecaryCellQuickAction();
   if(typeof updateLoomCellQuickAction==='function') updateLoomCellQuickAction();
+  if(typeof updateFarmCells==='function') updateFarmCells();
   updateDogbedCell();
   if(currentScreen==='pets-screen') renderPetsScreen(viewingPetId);
   if(currentScreen==='exploring-screen') renderExploring();

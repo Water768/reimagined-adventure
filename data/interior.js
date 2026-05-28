@@ -38,6 +38,12 @@ const PLOT_TILE_MENU = [
     desc:'Permanent builds that upgrade your homestead.',
     items:['well','well_finished','fire_pit'],
   },
+  {
+    id:'farming',
+    label:'Farming',
+    desc:'Plant seeds and harvest crops on timed plots.',
+    items:['farm_plot'],
+  },
 ];
 const DEFAULT_INTERIOR_LAYOUT = [
   'wardrobe','fireplace','picture',

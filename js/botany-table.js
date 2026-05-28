@@ -172,30 +172,48 @@ function botanyInputStockForInput(inp){
   return botanyInputStock(inp.key);
 }
 
-function botanyInputStockLine(inp){
-  if(isAnyOfBotanyInput(inp)){
-    return botanyInputKeys(inp).map(key=>{
-      const def=getBotanyItemDef(key);
-      return (def?.name||key)+' — '+formatAvailableCount(botanyInputStock(key));
-    }).join(' • ');
-  }
-  const def=getBotanyItemDef(inp.key);
-  const stock=botanyInputStock(inp.key);
-  let line=(def?.name||inp.key);
-  if(def?.unobtainable&&stock<(inp.qty||1)) line+=' - not obtainable yet';
-  else line+=' — '+formatAvailableCount(stock);
-  return line;
+function botanyInputLineHasEnough(key, qty){
+  const def=getBotanyItemDef(key);
+  const stock=botanyInputStock(key);
+  if(def?.unobtainable&&stock<qty) return false;
+  return stock>=qty;
 }
 
-function botanyRecipeStockLine(recipe){
-  return recipe.inputs.map(inp=>botanyInputStockLine(inp)).join(' • ');
+function botanyInputLineText(key, qty){
+  const def=getBotanyItemDef(key);
+  const stock=botanyInputStock(key);
+  const unobtainable=!!(def?.unobtainable&&stock<(qty||1));
+  return formatRecipeMatLine(def?.name||key, qty, stock, { unobtainable });
+}
+
+function botanyInputStockLineHtml(inp, lineClass){
+  const qty=inp.qty||1;
+  if(isAnyOfBotanyInput(inp)){
+    return botanyInputKeys(inp).map(key=>{
+      const ok=botanyInputLineHasEnough(key, qty);
+      return '<span class="'+lineClass+' '+wbStockClass(ok?1:0)+'">'+botanyInputLineText(key, qty)+'</span>';
+    }).join('');
+  }
+  const ok=botanyInputLineHasEnough(inp.key, qty);
+  return '<span class="'+lineClass+' '+wbStockClass(ok?1:0)+'">'+botanyInputLineText(inp.key, qty)+'</span>';
+}
+
+function botanyRecipeInputLinesHtml(recipe, lineClass){
+  return recipe.inputs.map(inp=>botanyInputStockLineHtml(inp, lineClass)).join('');
+}
+
+function botanyRecipeCraftHint(recipe){
+  if(isCrushApothecaryRecipe(recipe)||recipe.inputs.length<2) return '';
+  return '1 output uses 1 of each ingredient';
 }
 
 function botanyProcessRecipeRewardLine(recipe){
   if(isCrushApothecaryRecipe(recipe)){
     return '+'+(recipe.affinityXp||0)+' Earth • Mint or Sage';
   }
-  return '+'+recipe.xp+' Botany • Botany Lv '+(recipe.requiredBotanyLevel||1)+'+';
+  const parts=['+'+recipe.xp+' Botany'];
+  if(recipe.tailoringXp) parts.push('+'+recipe.tailoringXp+' Tailoring');
+  return parts.join(' • ');
 }
 
 function botanyProcessRecipeSubline(recipe){
@@ -208,7 +226,20 @@ function apothecaryRecipeXpPreview(recipe){
   if(isCrushApothecaryRecipe(recipe)){
     return 'Crush: +'+(recipe.affinityXp||0)+' Earth affinity';
   }
-  return 'Process: +'+recipe.xp+' Botany • Botany Lv '+(recipe.requiredBotanyLevel||1)+'+';
+  let line='Process: +'+recipe.xp+' Botany';
+  if(recipe.tailoringXp) line+=' • +'+recipe.tailoringXp+' Tailoring';
+  return line;
+}
+
+function apothecaryProcessXpLogLine(recipe){
+  let line='+'+recipe.xp+' Botany';
+  if(recipe.tailoringXp) line+=' • +'+recipe.tailoringXp+' Tailoring';
+  return line;
+}
+
+function botanyRecipeUiBlockMessage(block){
+  if(!block||block.type==='level') return '';
+  return botanyRecipeBlockMessage(block);
 }
 
 function basicHerbsInStock(){
@@ -285,7 +316,7 @@ function botanyRecipeBlockMessage(reason){
   if(reason.type==='level') return 'Need Botany Lv '+reason.required;
   if(reason.type==='input'){
     if(reason.input?.anyOf?.length) return 'Need mint or sage available';
-    if(reason.def?.unobtainable) return 'Need '+reason.def.name+' — not obtainable yet';
+    if(reason.def?.unobtainable) return 'Need '+reason.def.name+' • not obtainable yet';
     return 'Need '+((reason.def?.name)||reason.input.key)+' available';
   }
   if(reason.type==='bag') return 'Bag full — make space before processing';
@@ -329,6 +360,7 @@ function identifyOneHerb(){
     if(currentScreen==='botany-table-screen') renderApothecaryScreen();
     return {ok:false};
   }
+  const invBefore=invTotal();
   if(!consumeOneFromBagOrStore('basic_herbs')){
     showToast('Could not take basic herbs.');
     return {ok:false};
@@ -347,7 +379,7 @@ function identifyOneHerb(){
     if(currentScreen==='botany-table-screen') renderApothecaryScreen();
     return {ok:false,returned:true};
   }
-  invAddDirect(herb.key,herb.icon,herb.name,1);
+  invAddDirect(herb.key,herb.icon,herb.name,1,{ pickupBaseline:invBefore });
   grantXP('botany',BOTANY_IDENTIFY_XP,null);
   addActivityLog('botany-log',herb.icon+' Identified as '+herb.name+'! +'+BOTANY_IDENTIFY_XP+' Botany','success');
   showToast(herb.icon+' '+herb.name+' identified!');
@@ -362,6 +394,7 @@ function doApothecaryProcessAttempt(recipeKey){
   if(!recipe) return {ok:false};
   const block=botanyRecipeBlockReason(recipe);
   if(block) return {ok:false, block};
+  const invBefore=invTotal();
   let consumedHerbKey=null;
   for(const inp of recipe.inputs){
     const consumed=consumeApothecaryInput(inp);
@@ -385,10 +418,14 @@ function doApothecaryProcessAttempt(recipeKey){
     return {ok:true, shard};
   }
   const out=getBotanyItemDef(recipe.outputKey);
-  invAddDirect(out.key,out.icon,out.name,1);
+  invAddDirect(out.key,out.icon,out.name,1,{ pickupBaseline:invBefore });
   grantXP('botany',recipe.xp,null,{ deferSync:apothProcess.running, keepActivities:true });
-  addActivityLog('botany-log',out.icon+' '+out.name+' prepared! +'+recipe.xp+' Botany','success');
-  if(!apothProcess.running) showToast(out.icon+' '+out.name+' crafted!');
+  if(recipe.tailoringXp){
+    grantXP('tailoring',recipe.tailoringXp,null,{ deferSync:apothProcess.running, keepActivities:true });
+  }
+  const xpMsg=apothecaryProcessXpLogLine(recipe);
+  addActivityLog('botany-log',out.icon+' '+out.name+' prepared! '+xpMsg,'success');
+  if(!apothProcess.running) showToast(out.icon+' '+out.name+' crafted! '+xpMsg);
   if(!apothProcess.running) syncUI();
   return {ok:true};
 }
@@ -449,7 +486,7 @@ function renderApothecaryIdentifyPanel(){
     el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(stock<1?' unavail':'')+'">'
       +'<span class="wb-mat-icon">🌿</span>'
       +'<div class="wb-mat-pick-body">'
-      +'<span class="wb-mat-pick-avail '+stockCls+'">Basic Herbs — '+formatAvailableCount(stock)+'</span>'
+      +'<span class="wb-mat-pick-avail '+stockCls+'">'+formatRecipeMatLine('Basic Herbs', 1, stock)+'</span>'
       +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">Each herb becomes aloe, mint, or sage (equal chance)</span>'
       +'</div></div>';
   }
@@ -466,17 +503,18 @@ function renderApothecaryProcessPanel(){
   const can=canProcessBotanyRecipe(recipe.id);
   const block=botanyRecipeBlockReason(recipe);
   const lvlBadge=apothecaryRecipeLevelBadge(recipe);
-  const stockLine=botanyRecipeStockLine(recipe);
-  const stockCls=wbStockClass(can?1:0);
+  const inputLines=botanyRecipeInputLinesHtml(recipe, 'wb-mat-pick-avail');
+  const uiBlock=botanyRecipeUiBlockMessage(block);
 
   if(!apothecaryProcessPickerOpen){
     el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(can?'':' unavail')+'" onclick="toggleApothecaryProcessPicker()">'
       +'<span class="wb-mat-icon">'+recipe.icon+'</span>'
       +'<div class="wb-mat-pick-body">'
       +plotAddItemTitleRow(recipe.label, lvlBadge)
-      +'<span class="wb-mat-pick-avail '+stockCls+'">'+stockLine+'</span>'
+      +inputLines
+      +(botanyRecipeCraftHint(recipe)?'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+botanyRecipeCraftHint(recipe)+'</span>':'')
       +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+botanyProcessRecipeRewardLine(recipe)+'</span>'
-      +(block?'<span class="wb-mat-pick-name" style="font-size:11px;color:rgba(255,110,110,0.92)">'+botanyRecipeBlockMessage(block)+'</span>':'')
+      +(uiBlock?'<span class="wb-mat-pick-name" style="font-size:11px;color:rgba(255,110,110,0.92)">'+uiBlock+'</span>':'')
       +'</div>'
       +'<span class="wb-log-pick-chevron">▾</span>'
       +'</div>';
@@ -492,7 +530,8 @@ function renderApothecaryProcessPanel(){
           +'<span class="wb-mat-icon">'+r.icon+'</span>'
           +'<span class="wb-mat-info">'
           +plotAddItemTitleRow(r.label, apothecaryRecipeLevelBadge(r))
-          +'<span class="wb-mat-stock '+wbStockClass(recipeCan?1:0)+'">'+botanyRecipeStockLine(r)+'</span>'
+          +botanyRecipeInputLinesHtml(r, 'wb-mat-stock')
+          +(botanyRecipeCraftHint(r)?'<span class="wb-mat-stock" style="color:var(--ui-text-dim)">'+botanyRecipeCraftHint(r)+'</span>':'')
           +'<span class="wb-mat-stock" style="color:var(--ui-text-dim)">'+botanyProcessRecipeRewardLine(r)+'</span>'
           +'</span></div>';
       }).join('');
@@ -504,7 +543,7 @@ function renderApothecaryProcessPanel(){
   const xpEl=document.getElementById('apoth-process-xp');
   if(xpEl){
     let html='<span class="wb-xp-line">'+apothecaryRecipeXpPreview(recipe)+'</span>';
-    if(block) html+='<span class="wb-xp-line">'+botanyRecipeBlockMessage(block)+'</span>';
+    if(uiBlock) html+='<span class="wb-xp-line">'+uiBlock+'</span>';
     xpEl.innerHTML=html;
   }
 }
@@ -533,7 +572,10 @@ function renderApothecaryActivityButtons(){
   const isCrush=recipe&&isCrushApothecaryRecipe(recipe);
   if(status){
     if(apothProcess.running) status.textContent='Processing…';
-    else status.textContent=block?botanyRecipeBlockMessage(block):(isCrush?'Grind mint or sage for earth affinity':'Prepare herbs and remedies at the table');
+    else{
+      const uiBlock=block?botanyRecipeUiBlockMessage(block):'';
+      status.textContent=uiBlock||(isCrush?'Grind mint or sage for earth affinity':'Prepare herbs and remedies at the table');
+    }
     status.classList.toggle('idle',!apothProcess.running);
   }
   if(apothProcess.running){

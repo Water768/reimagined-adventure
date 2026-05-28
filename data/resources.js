@@ -50,6 +50,7 @@ const MINE_RESOURCE_DEFS = {
   quartz:     { key:'quartz',     icon:'💎', name:'Quartz',     category:'mineral', unlockLevel:38, vibe:'Clear crystals glinting in the dark.' },
   silver_ore: { key:'silver_ore', icon:'🩶', name:'Silver Ore', category:'ore',   unlockLevel:48, vibe:'Precious streaks from the deepest veins.' },
   gold_ore:   { key:'gold_ore',   icon:'🟡', name:'Gold Ore',   category:'ore',   unlockLevel:60, vibe:'Rare golden flecks — a miner\'s dream.' },
+  diamond:    { key:'diamond',    icon:'💎', name:'Diamond',    category:'mineral', unlockLevel:70, vibe:'Flawless crystal — rarer than gold.' },
   rope:       { key:'rope',       icon:'⛓️', name:'Rope',       category:'tool',  unlockLevel:1,  vibe:'Strong cord for drawing water from a well.' },
   bucket:     { key:'bucket',     icon:'🪣', name:'Bucket',     category:'tool',  unlockLevel:1,  vibe:'A bucket to haul water up from the depths.' },
 };

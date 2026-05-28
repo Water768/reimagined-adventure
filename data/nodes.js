@@ -21,6 +21,7 @@ const PLOT_TILE_BASE = {
   well:        { typeId:'well',        name:'Well (bucketless)', icon:'🪣', behavior:'well',  removable:true, category:'structure', archUnlockLevel:1, desc:'Build with 50 bricks — free after your first.' },
   well_finished:{ typeId:'well_finished', name:'Well', icon:'🪣', behavior:'well', removable:true, category:'structure', archUnlockLevel:1, desc:'A working well — free after your first.' },
   fire_pit:    { typeId:'fire_pit',    name:'Fire Pit', icon:'🔥', behavior:'fire_pit', removable:true, category:'structure', archUnlockLevel:4, desc:'Build with 50 stone, 50 clay, and 50 bricks — free after your first.' },
+  farm_plot:   { typeId:'farm_plot',   name:'Farming Plot', icon:'🌾', behavior:'farm', removable:true, category:'farming', desc:'Plant seeds and harvest crops over time.' },
 };
 
 const MINES = [

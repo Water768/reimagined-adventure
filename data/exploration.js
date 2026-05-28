@@ -16,6 +16,12 @@ const EXPEDITION_STAMINA_RANGES={
   long:{min:1200,max:1500},
 };
 
+const EXPEDITION_MEDICINE_ITEMS=[
+  { key:'clean_bandage', recovery:1 },
+  { key:'soothing_bandage', recovery:2 },
+  { key:'improved_soothing_bandage', recovery:3 },
+];
+
 const EXPEDITION_TIERS={
   short:{
     key:'short',
@@ -50,6 +56,10 @@ const EXPEDITION_DURATION_MS={
   medium:25000,
   long:45000,
 };
+
+const EXPEDITION_STAR_EXPLORATION_XP=5;
+const EXPEDITION_STAR_AIR_XP=5;
+const EXPEDITION_STAR_LIFETIME_MS=4000;
 
 const EXPLORATION_LOOT_POOL=[
   {key:'brick',icon:'🧱',name:'Brick'},
@@ -134,6 +144,32 @@ function rollExpeditionStaminaRequired(tierKey){
   const max=Math.floor(range.max/10)*10;
   const steps=Math.max(0, Math.round((max-min)/10));
   return min + Math.floor(Math.random()*(steps+1))*10;
+}
+
+function rollExpeditionHealingRequired(tierKey){
+  const range=EXPEDITION_STAMINA_RANGES[tierKey]||EXPEDITION_STAMINA_RANGES.short;
+  const min=Math.max(10, Math.floor(range.min/20/10)*10);
+  const max=Math.max(min, Math.ceil(range.max/20/10)*10);
+  const steps=Math.max(0, Math.round((max-min)/10));
+  return min + Math.floor(Math.random()*(steps+1))*10;
+}
+
+function getExpeditionMedicineDef(key){
+  return EXPEDITION_MEDICINE_ITEMS.find(i=>i.key===key)||null;
+}
+
+function getMedicineRecoveryForItemKey(itemKey){
+  return getExpeditionMedicineDef(itemKey)?.recovery||0;
+}
+
+function clearExpeditionHealingRolls(){
+  state.exploreHealingRolls={};
+  scheduleSaveGame();
+}
+
+function clearExpeditionSupplyRolls(){
+  clearExpeditionStaminaRolls();
+  clearExpeditionHealingRolls();
 }
 
 function getFishIdForItemKey(itemKey){

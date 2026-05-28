@@ -7,7 +7,7 @@ const FABRIC_ITEMS={
   simple_cloth:{ key:'simple_cloth', icon:'🧵', name:'Simple Cloth' },
   silk_cloth:{ key:'silk_cloth', icon:'🧶', name:'Silk Cloth' },
   linen:{ key:'linen', icon:'🪡', name:'Linen' },
-  bandage:{ key:'bandage', icon:'🩹', name:'Clean Bandage' },
+  clean_bandage:{ key:'clean_bandage', icon:'🩹', name:'Clean Bandage' },
   soothing_bandage:{ key:'soothing_bandage', icon:'🩹', name:'Soothing Bandage' },
   improved_soothing_bandage:{ key:'improved_soothing_bandage', icon:'🩹', name:'Improved Soothing Bandage' },
 };
@@ -20,7 +20,7 @@ const LOOM_LINEN_LOCKED_MSG="You're going to need a better loom....";
 
 const LOOM_RECIPE_SECTIONS=[
   { label:'CLOTH', keys:['simple_cloth','silk_cloth','linen'] },
-  { label:'BANDAGES', keys:['bandage'] },
+  { label:'BANDAGES', keys:['clean_bandage'] },
 ];
 
 const LOOM_RECIPES={
@@ -65,11 +65,11 @@ const LOOM_RECIPES={
     xpSuccess:LOOM_WEAVE_XP_SUCCESS,
     xpFail:LOOM_WEAVE_XP_FAIL,
   },
-  bandage:{
-    id:'bandage',
+  clean_bandage:{
+    id:'clean_bandage',
     label:'Clean Bandage',
     icon:'🩹',
-    outputKey:'bandage',
+    outputKey:'clean_bandage',
     inputs:[{ key:'simple_cloth', qty:2 }],
     requiredTailoringLevel:5,
     baseSuccess:0.58,
@@ -109,7 +109,8 @@ function loomInputOptionLabel(opt){
     ||FIBER_DEFS?.[opt.key]
     ||THREAD_DEFS&&Object.values(THREAD_DEFS).find(t=>t.key===opt.key);
   const name=def?.name||opt.key;
-  return name+(opt.qty>1?' ×'+opt.qty:'');
+  const qty=Math.max(1, opt.qty||1);
+  return name+' ×'+qty;
 }
 
 function loomInputMaterialName(opt){

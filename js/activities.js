@@ -941,6 +941,8 @@ function openExploringMenu(instanceId){
   resetExpeditionTrekUi();
   if(instanceId) explore.instanceId=instanceId;
   explore.focusFishId=null;
+  explore.focusMedicineKey=null;
+  explore.eitherChoice=null;
   explore.reqSubmenu=null;
   showScreen('exploring-screen');
   lastHome='exterior-screen';
@@ -967,16 +969,43 @@ function ensureExpeditionStaminaRequired(tierKey){
   return state.exploreStaminaRolls[tierKey];
 }
 
+function ensureExpeditionHealingRequired(tierKey){
+  if(!state.exploreHealingRolls) state.exploreHealingRolls={};
+  if(state.exploreHealingRolls[tierKey]==null){
+    state.exploreHealingRolls[tierKey]=rollExpeditionHealingRequired(tierKey);
+    scheduleSaveGame();
+  }
+  return state.exploreHealingRolls[tierKey];
+}
+
 function selectExpeditionTier(key){
   if(!EXPEDITION_TIERS[key]) return;
   explore.tier=key;
   explore.focusFishId=null;
+  explore.focusMedicineKey=null;
+  explore.eitherChoice=null;
   explore.reqSubmenu=null;
+  renderExploring();
+}
+
+function setExploreEitherChoice(choice){
+  if(choice!=='medicine'&&choice!=='torch') return;
+  explore.eitherChoice=choice;
+  explore.reqSubmenu=null;
+  renderExploring();
+}
+
+function setExploreMedicineFocus(medicineKey){
+  explore.focusMedicineKey=medicineKey||null;
   renderExploring();
 }
 
 function toggleExploreReqSubmenu(slotKey, event){
   event?.stopPropagation?.();
+  const tier=getExpeditionTier(explore.tier);
+  if(expeditionRequiresEither(tier)&&(slotKey==='medicine'||slotKey==='torch')){
+    explore.eitherChoice=slotKey;
+  }
   explore.reqSubmenu=explore.reqSubmenu===slotKey?null:slotKey;
   renderExploring();
 }
@@ -1007,7 +1036,108 @@ function getAvailableExpeditionRations(){
 }
 
 function getAvailableExpeditionMedicine(){
-  return [];
+  const items=[];
+  EXPEDITION_MEDICINE_ITEMS.forEach(def=>{
+    const count=itemCountBagAndStore(def.key);
+    if(count<=0) return;
+    const itemDef=(typeof getBotanyItemDef==='function'?getBotanyItemDef(def.key):null)
+      ||(typeof getFabricItemDef==='function'?getFabricItemDef(def.key):null);
+    items.push({
+      medicineKey:def.key,
+      key:def.key,
+      icon:itemDef?.icon||'💊',
+      name:itemDef?.name||def.key,
+      recovery:def.recovery,
+      count,
+    });
+  });
+  items.sort((a,b)=>a.recovery-b.recovery || a.name.localeCompare(b.name));
+  return items;
+}
+
+function getAvailableMedicineTypes(){
+  return getAvailableExpeditionMedicine().map(item=>({
+    medicineKey:item.medicineKey,
+    icon:item.icon,
+    name:item.name,
+    recovery:item.recovery,
+    count:item.count,
+  }));
+}
+
+function expeditionMedicineRequired(tier){
+  if(!expeditionSlotNeeded(tier, 'medicine')) return false;
+  if(expeditionRequiresEither(tier)) return explore.eitherChoice==='medicine';
+  return true;
+}
+
+function expeditionTorchRequired(tier){
+  if(!expeditionSlotNeeded(tier, 'torch')) return false;
+  if(expeditionRequiresEither(tier)) return explore.eitherChoice==='torch';
+  return true;
+}
+
+function totalMedicineRecoveryAvailable(){
+  return getAvailableExpeditionMedicine().reduce((sum,item)=>sum+(item.count*item.recovery), 0);
+}
+
+function planExpeditionMedicine(required, focusMedicineKey){
+  const totalAvailable=totalMedicineRecoveryAvailable();
+  let items=getAvailableExpeditionMedicine();
+  if(focusMedicineKey) items=items.filter(item=>item.medicineKey===focusMedicineKey);
+  items.sort((a,b)=>a.recovery-b.recovery || a.name.localeCompare(b.name));
+
+  let remaining=required;
+  const plan=[];
+  for(const item of items){
+    if(remaining<=0) break;
+    const useCount=Math.min(item.count, Math.ceil(remaining/item.recovery));
+    if(useCount<=0) continue;
+    plan.push({ ...item, useCount });
+    remaining-=useCount*item.recovery;
+  }
+
+  const totalProvided=plan.reduce((sum,line)=>sum+(line.useCount*line.recovery),0);
+  const sufficient=totalProvided>=required;
+
+  if(focusMedicineKey && !sufficient){
+    const focusItem=items[0];
+    const recovery=focusItem?.recovery||getExpeditionMedicineDef(focusMedicineKey)?.recovery||1;
+    const typeHave=items.reduce((sum,item)=>sum+item.count,0);
+    const typeNeed=Math.ceil(required/recovery);
+    return {
+      plan:[],
+      focusSummary:{
+        medicineKey:focusMedicineKey,
+        icon:focusItem?.icon||'💊',
+        name:focusItem?.name||focusMedicineKey,
+        have:typeHave,
+        need:typeNeed,
+        recovery,
+      },
+      totalProvided,
+      totalAvailable,
+      required,
+      sufficient:false,
+      remaining:Math.max(0, required-totalProvided),
+    };
+  }
+
+  const displayPlan=plan.map(line=>({
+    ...line,
+    displayHave:line.count,
+    displayNeed:line.useCount,
+  }));
+
+  return {
+    plan:displayPlan,
+    focusSummary:null,
+    totalProvided,
+    totalAvailable,
+    required,
+    sufficient,
+    remaining:Math.max(0, required-totalProvided),
+  };
 }
 
 function getAvailableExpeditionTorches(){
@@ -1020,40 +1150,49 @@ function countExpeditionSupply(slotKey){
   return 0;
 }
 
-function expeditionSuppliesReady(tier, staminaPlan){
+function expeditionSuppliesReady(tier, staminaPlan, medicinePlan){
   if(!staminaPlan.sufficient) return { ready:false, reason:'rations' };
-  const req=tier.requirements||{};
   if(expeditionRequiresEither(tier)){
-    const ok=req.either.some(key=>countExpeditionSupply(key)>=1);
-    return ok ? { ready:true } : { ready:false, reason:'either' };
+    if(!explore.eitherChoice) return { ready:false, reason:'either' };
+    if(explore.eitherChoice==='medicine'){
+      if(!medicinePlan.sufficient) return { ready:false, reason:'medicine' };
+      return { ready:true };
+    }
+    if(countExpeditionSupply('torch')<1) return { ready:false, reason:'torch' };
+    return { ready:true };
   }
-  if((req.medicine||0)>0 && countExpeditionSupply('medicine')<req.medicine){
+  if(expeditionMedicineRequired(tier) && !medicinePlan.sufficient){
     return { ready:false, reason:'medicine' };
   }
-  if((req.torch||0)>0 && countExpeditionSupply('torch')<req.torch){
+  if(expeditionTorchRequired(tier) && countExpeditionSupply('torch')<1){
     return { ready:false, reason:'torch' };
   }
   return { ready:true };
 }
 
-function expeditionReadyStatusText(tier, staminaPlan, supplies){
+function expeditionReadyStatusText(tier, staminaPlan, medicinePlan, supplies){
   if(!staminaPlan.sufficient){
     if(!getAvailableExpeditionRations().length){
       return 'Cook fish and pack available rations';
     }
-    return 'Need '+(staminaPlan.required-staminaPlan.totalProvided)+' more stamina from rations';
+    return 'Need '+(staminaPlan.required-staminaPlan.totalAvailable)+' more stamina from rations';
   }
-  if(supplies.ready) return 'All supplies packed — ready to depart';
-  if(supplies.reason==='either') return 'Pack medicine or a torch';
-  if(supplies.reason==='medicine'||supplies.reason==='torch') return 'Need medicine and a torch';
+  if(supplies.ready) return 'All supplies packed • ready to depart';
+  if(supplies.reason==='either') return 'Pick medicine or a torch';
+  if(supplies.reason==='medicine'){
+    if(!getAvailableExpeditionMedicine().length) return 'Craft bandages for medicine supplies';
+    return 'Need '+(medicinePlan.required-medicinePlan.totalAvailable)+' more recovery from medicine';
+  }
+  if(supplies.reason==='torch') return 'Pack a torch for this expedition';
   return 'Pack the required supplies';
 }
 
-function expeditionStartBtnSub(tier, staminaPlan, supplies){
+function expeditionStartBtnSub(tier, staminaPlan, medicinePlan, supplies){
   if(!staminaPlan.sufficient) return 'pack enough rations for stamina';
   if(supplies.ready) return 'depart when ready';
-  if(supplies.reason==='either') return 'need medicine or a torch';
-  if(supplies.reason==='medicine'||supplies.reason==='torch') return 'need medicine and a torch';
+  if(supplies.reason==='either') return 'pick medicine or a torch';
+  if(supplies.reason==='medicine') return 'pack enough medicine for recovery';
+  if(supplies.reason==='torch') return 'need a torch packed';
   return 'complete supply checks first';
 }
 
@@ -1081,7 +1220,12 @@ function staminaStockClass(have, need){
   return 'stock-none';
 }
 
+function totalStaminaAvailable(){
+  return getAvailableExpeditionRations().reduce((sum,item)=>sum+(item.count*item.stamina), 0);
+}
+
 function planExpeditionStamina(required, focusFishId){
+  const totalAvailable=totalStaminaAvailable();
   let items=getAvailableExpeditionRations();
   if(focusFishId) items=items.filter(item=>item.fishId===focusFishId);
   items.sort((a,b)=>a.stamina-b.stamina || a.name.localeCompare(b.name));
@@ -1116,6 +1260,7 @@ function planExpeditionStamina(required, focusFishId){
         stamina,
       },
       totalProvided,
+      totalAvailable,
       required,
       sufficient:false,
       remaining:Math.max(0, required-totalProvided),
@@ -1132,6 +1277,7 @@ function planExpeditionStamina(required, focusFishId){
     plan:displayPlan,
     focusSummary:null,
     totalProvided,
+    totalAvailable,
     required,
     sufficient,
     remaining:Math.max(0, required-totalProvided),
@@ -1169,7 +1315,79 @@ function renderExpeditionRationsPlanHtml(staminaPlan){
   }).join('');
 }
 
-function renderExploreReqSubmenu(tier, staminaPlan){
+function renderExpeditionMedicinePlanHtml(medicinePlan){
+  if(medicinePlan.focusSummary){
+    const f=medicinePlan.focusSummary;
+    const cls=staminaStockClass(f.have, f.need);
+    return '<div class="explore-req-plan-line">'
+      +'<span>'+f.icon+' '+f.name+'</span>'
+      +'<span class="explore-req-plan-qty '+cls+'">'+f.have+'/'+f.need+'</span>'
+      +'</div>';
+  }
+  if(!medicinePlan.plan.length){
+    return '<div class="store-line" style="color:rgba(200,169,110,0.45);padding:2px 0">No medicine packed.</div>';
+  }
+  return medicinePlan.plan.map(line=>{
+    const cls=staminaStockClass(line.displayHave, line.displayNeed);
+    return '<div class="explore-req-plan-line">'
+      +'<span>'+line.icon+' '+line.name+' ×'+line.useCount+'</span>'
+      +'<span class="explore-req-plan-qty '+cls+'">'+line.displayHave+'/'+line.displayNeed+'</span>'
+      +'</div>';
+  }).join('');
+}
+
+function renderExpeditionReqBox(slotKey, tier, opts){
+  const slot=EXPEDITION_REQ_SLOTS[slotKey];
+  const open=explore.reqSubmenu===slotKey;
+  const openCls=open?' submenu-open':'';
+  const selectedCls=opts?.selected?' either-selected':'';
+  const dimCls=opts?.dimmed?' either-dimmed':'';
+  if(slotKey==='rations'){
+    const staminaPlan=opts.staminaPlan;
+    const rationsCls=staminaStockClass(staminaPlan.totalAvailable, staminaPlan.required);
+    return '<button type="button" class="expedition-req-box clickable'+openCls+'" onclick="toggleExploreReqSubmenu(\'rations\', event)">'
+      +'<span class="expedition-req-icon">'+slot.icon+'</span>'
+      +'<span class="expedition-req-label">'+slot.label+'</span>'
+      +'<span class="expedition-req-qty '+rationsCls+'">'+staminaPlan.totalAvailable+'/'+staminaPlan.required+'</span>'
+      +'</button>';
+  }
+  if(slotKey==='medicine' && opts?.medicinePlan){
+    const medicinePlan=opts.medicinePlan;
+    const medicineCls=staminaStockClass(medicinePlan.totalAvailable, medicinePlan.required);
+    const qtyHtml=opts?.medicineNeeded
+      ?'<span class="expedition-req-qty '+medicineCls+'">'+medicinePlan.totalAvailable+'/'+medicinePlan.required+'</span>'
+      :'<span class="expedition-req-na">not needed</span>';
+    return '<button type="button" class="expedition-req-box clickable'+openCls+selectedCls+dimCls+'" onclick="toggleExploreReqSubmenu(\'medicine\', event)">'
+      +'<span class="expedition-req-icon">'+slot.icon+'</span>'
+      +'<span class="expedition-req-label">'+slot.label+'</span>'
+      +qtyHtml
+      +'</button>';
+  }
+  if(slotKey==='torch'){
+    const label=expeditionSlotQtyLabel(tier, slotKey);
+    const unneeded=!label;
+    const qtyHtml=unneeded
+      ?'<span class="expedition-req-na">not needed</span>'
+      :'<span class="expedition-req-qty">×'+(label?.qty||1)+'</span>';
+    return '<button type="button" class="expedition-req-box clickable'+openCls+selectedCls+dimCls+(unneeded?' unneeded':'')+'" onclick="toggleExploreReqSubmenu(\'torch\', event)">'
+      +'<span class="expedition-req-icon">'+slot.icon+'</span>'
+      +'<span class="expedition-req-label">'+slot.label+'</span>'
+      +qtyHtml
+      +'</button>';
+  }
+  const label=expeditionSlotQtyLabel(tier, slotKey);
+  const unneeded=!label;
+  const qtyHtml=unneeded
+    ?'<span class="expedition-req-na">not needed</span>'
+    :'<span class="expedition-req-qty">×'+(label?.qty||0)+'</span>';
+  return '<button type="button" class="expedition-req-box clickable'+openCls+(unneeded?' unneeded':'')+'" onclick="toggleExploreReqSubmenu(\''+slotKey+'\', event)">'
+    +'<span class="expedition-req-icon">'+slot.icon+'</span>'
+    +'<span class="expedition-req-label">'+slot.label+'</span>'
+    +qtyHtml
+    +'</button>';
+}
+
+function renderExploreReqSubmenu(tier, staminaPlan, medicinePlan){
   const el=document.getElementById('explore-req-submenu');
   if(!el) return;
   const key=explore.reqSubmenu;
@@ -1181,11 +1399,11 @@ function renderExploreReqSubmenu(tier, staminaPlan){
   el.hidden=false;
   const slot=EXPEDITION_REQ_SLOTS[key];
   if(key==='rations'){
-    const totalCls=staminaStockClass(staminaPlan.totalProvided, staminaPlan.required);
+    const totalCls=staminaStockClass(staminaPlan.totalAvailable, staminaPlan.required);
     const species=getAvailableFishSpecies();
     let html='<div class="explore-req-submenu-title">RATIONS</div>'
       +'<div class="explore-req-submenu-sub">Stamina from cooked fish</div>'
-      +'<div class="explore-req-submenu-summary '+totalCls+'"><span class="stamina-val">'+staminaPlan.totalProvided+'/'+staminaPlan.required+'</span> stamina planned</div>'
+      +'<div class="explore-req-submenu-summary '+totalCls+'"><span class="stamina-val">'+staminaPlan.totalAvailable+'/'+staminaPlan.required+'</span> stamina available</div>'
       +'<div class="explore-req-submenu-section">PLANNED</div>'
       +renderExpeditionRationsPlanHtml(staminaPlan)
       +'<div class="explore-req-submenu-section">FOCUS</div>'
@@ -1200,7 +1418,7 @@ function renderExploreReqSubmenu(tier, staminaPlan){
         const active=explore.focusFishId===sp.fishId?' active':'';
         return '<button type="button" class="explore-req-submenu-item'+active+'" onclick="setExploreStaminaFocus(\''+sp.fishId+'\')">'
           +'<span>'+sp.icon+' '+sp.name+'</span>'
-          +'<span class="explore-req-submenu-meta">'+sp.stamina+' stam · '+sp.count+' packed</span>'
+          +'<span class="explore-req-submenu-meta">'+sp.stamina+' stam • '+sp.count+' packed</span>'
           +'</button>';
       }).join('');
     }
@@ -1208,9 +1426,30 @@ function renderExploreReqSubmenu(tier, staminaPlan){
     return;
   }
   if(key==='medicine'){
-    el.innerHTML='<div class="explore-req-submenu-title">MEDICINE</div>'
-      +'<div class="explore-req-submenu-sub">'+slot.submenuTitle+'</div>'
-      +'<div class="store-line" style="color:rgba(200,169,110,0.45);padding:4px 0">No medicine items yet.</div>';
+    const totalCls=staminaStockClass(medicinePlan.totalAvailable, medicinePlan.required);
+    const types=getAvailableMedicineTypes();
+    let html='<div class="explore-req-submenu-title">MEDICINE</div>'
+      +'<div class="explore-req-submenu-sub">'+slot.submenuTitle+' • each bandage used once</div>'
+      +'<div class="explore-req-submenu-summary '+totalCls+'"><span class="stamina-val">'+medicinePlan.totalAvailable+'/'+medicinePlan.required+'</span> recovery available</div>'
+      +'<div class="explore-req-submenu-section">PLANNED</div>'
+      +renderExpeditionMedicinePlanHtml(medicinePlan)
+      +'<div class="explore-req-submenu-section">FOCUS</div>'
+      +'<button type="button" class="explore-req-submenu-item'+(!explore.focusMedicineKey?' active':'')+'" onclick="setExploreMedicineFocus(null)">'
+      +'<span>Weakest first (auto)</span>'
+      +'<span class="explore-req-submenu-meta">lowest recovery first</span>'
+      +'</button>';
+    if(!types.length){
+      html+='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:6px 0 2px">No bandages available • craft at loom or apothecary table.</div>';
+    }else{
+      html+=types.map(item=>{
+        const active=explore.focusMedicineKey===item.medicineKey?' active':'';
+        return '<button type="button" class="explore-req-submenu-item'+active+'" onclick="setExploreMedicineFocus(\''+item.medicineKey+'\')">'
+          +'<span>'+item.icon+' '+item.name+'</span>'
+          +'<span class="explore-req-submenu-meta">+'+item.recovery+' recovery • '+item.count+' packed</span>'
+          +'</button>';
+      }).join('');
+    }
+    el.innerHTML=html;
     return;
   }
   if(key==='torch'){
@@ -1220,37 +1459,37 @@ function renderExploreReqSubmenu(tier, staminaPlan){
   }
 }
 
-function renderExpeditionRequirements(tier){
+function renderExpeditionRequirements(tier, staminaPlan, medicinePlan){
   const row=document.getElementById('explore-req-row');
   if(!row) return;
-  const requiredStamina=ensureExpeditionStaminaRequired(tier.key);
-  const staminaPlan=planExpeditionStamina(requiredStamina, explore.focusFishId);
-  const rationsCls=staminaStockClass(staminaPlan.totalProvided, staminaPlan.required);
+  const medicineNeeded=expeditionMedicineRequired(tier);
+  const hasEither=expeditionRequiresEither(tier);
+  row.classList.toggle('has-either', hasEither);
 
-  row.innerHTML=['rations','medicine','torch'].map(slotKey=>{
-    const slot=EXPEDITION_REQ_SLOTS[slotKey];
-    const open=explore.reqSubmenu===slotKey;
-    if(slotKey==='rations'){
-      return '<button type="button" class="expedition-req-box clickable'+(open?' submenu-open':'')+'" onclick="toggleExploreReqSubmenu(\'rations\', event)">'
-        +'<span class="expedition-req-icon">'+slot.icon+'</span>'
-        +'<span class="expedition-req-label">'+slot.label+'</span>'
-        +'<span class="expedition-req-qty '+rationsCls+'">'+staminaPlan.totalProvided+'/'+staminaPlan.required+'</span>'
-        +'</button>';
-    }
-    const label=expeditionSlotQtyLabel(tier, slotKey);
-    const unneeded=!label;
-    const qtyHtml=unneeded
-      ?'<span class="expedition-req-na">not needed</span>'
-      :(label.either
-        ?'<span class="expedition-req-qty">×'+label.qty+'</span><span class="expedition-req-either">either</span>'
-        :'<span class="expedition-req-qty">×'+label.qty+'</span>');
-    return '<button type="button" class="expedition-req-box clickable'+(unneeded?' unneeded':'')+(open?' submenu-open':'')+'" onclick="toggleExploreReqSubmenu(\''+slotKey+'\', event)">'
-      +'<span class="expedition-req-icon">'+slot.icon+'</span>'
-      +'<span class="expedition-req-label">'+slot.label+'</span>'
-      +qtyHtml
-      +'</button>';
-  }).join('');
-  renderExploreReqSubmenu(tier, staminaPlan);
+  if(hasEither){
+    const medSelected=explore.eitherChoice==='medicine';
+    const torchSelected=explore.eitherChoice==='torch';
+    row.innerHTML=renderExpeditionReqBox('rations', tier, { staminaPlan })
+      +'<div class="expedition-req-either-wrap">'
+      +'<div class="expedition-req-either-head">Either • pick medicine or torch</div>'
+      +'<div class="expedition-req-either-pair">'
+      +renderExpeditionReqBox('medicine', tier, {
+        medicinePlan,
+        medicineNeeded:true,
+        selected:medSelected,
+        dimmed:torchSelected,
+      })
+      +renderExpeditionReqBox('torch', tier, {
+        selected:torchSelected,
+        dimmed:medSelected,
+      })
+      +'</div></div>';
+  }else{
+    row.innerHTML=renderExpeditionReqBox('rations', tier, { staminaPlan })
+      +renderExpeditionReqBox('medicine', tier, { medicinePlan, medicineNeeded })
+      +renderExpeditionReqBox('torch', tier, {});
+  }
+  renderExploreReqSubmenu(tier, staminaPlan, medicinePlan);
 }
 
 function renderExpeditionRewards(tier){
@@ -1279,7 +1518,9 @@ function renderExploring(){
   updateActivitySkillPill('explore', 'exploration');
   const tier=getExpeditionTier(explore.tier);
   const requiredStamina=ensureExpeditionStaminaRequired(tier.key);
+  const requiredHealing=ensureExpeditionHealingRequired(tier.key);
   const staminaPlan=planExpeditionStamina(requiredStamina, explore.focusFishId);
+  const medicinePlan=planExpeditionMedicine(requiredHealing, explore.focusMedicineKey);
   const def=getPlotTileDef('cave');
   const titleEl=document.getElementById('explore-screen-title');
   const nameEl=document.getElementById('explore-cave-name');
@@ -1287,18 +1528,18 @@ function renderExploring(){
   const iconEl=document.getElementById('explore-cave-icon');
   if(titleEl) titleEl.textContent='Exploring';
   if(nameEl) nameEl.textContent=def?.name||'Cave';
-  if(subEl) subEl.textContent=tier.label+' expedition • '+requiredStamina+' stamina • Exploration Lv '+(state.skills.exploration?.level||1);
+  if(subEl) subEl.textContent=tier.label+' expedition';
   if(iconEl) iconEl.textContent=def?.icon||'🕳️';
   renderExpeditionTierPicker();
-  renderExpeditionRequirements(tier);
+  renderExpeditionRequirements(tier, staminaPlan, medicinePlan);
   renderExpeditionRewards(tier);
   renderExplorationPoolList(EXPLORATION_LOOT_POOL, 'explore-loot-pool', 'No loot defined.');
   renderExplorationPoolList(EXPLORATION_SUPER_RARE_POOL, 'explore-super-rare-pool', 'No super rare loot defined.');
-  const supplies=expeditionSuppliesReady(tier, staminaPlan);
+  const supplies=expeditionSuppliesReady(tier, staminaPlan, medicinePlan);
   const status=document.getElementById('explore-status');
   if(status){
-    status.textContent=expeditionReadyStatusText(tier, staminaPlan, supplies);
-    status.classList.add('idle');
+    status.textContent=expeditionReadyStatusText(tier, staminaPlan, medicinePlan, supplies);
+    status.classList.toggle('idle',!supplies.ready);
   }
   const btnEl=document.getElementById('explore-buttons');
   if(btnEl){
@@ -1306,7 +1547,7 @@ function renderExploring(){
     btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
       +'<button class="wb-btn once" '+(canStart?'':'disabled')+' onclick="startExpedition()">'
       +'🧭 START '+tier.label.toUpperCase()+' EXPEDITION'
-      +'<span class="wb-btn-sub">'+expeditionStartBtnSub(tier, staminaPlan, supplies)+'</span>'
+      +'<span class="wb-btn-sub">'+expeditionStartBtnSub(tier, staminaPlan, medicinePlan, supplies)+'</span>'
       +'</button></div></div>';
   }
 }
@@ -1319,24 +1560,24 @@ function consumeExpeditionStaminaPlan(staminaPlan){
   });
 }
 
+function consumeExpeditionMedicinePlan(medicinePlan){
+  for(const line of medicinePlan.plan){
+    consumeManyFromBagOrStore(line.key, line.useCount);
+  }
+}
+
 function consumeExpeditionOtherSupplies(tier){
-  const req=tier.requirements||{};
   if(expeditionRequiresEither(tier)){
-    for(const slotKey of req.either){
-      if(countExpeditionSupply(slotKey)>=1){
-        consumeOneFromBagOrStore(slotKey);
-        return;
-      }
+    if(explore.eitherChoice==='torch' && countExpeditionSupply('torch')>=1){
+      consumeOneFromBagOrStore('torch');
     }
     return;
   }
-  for(let n=0;n<(req.medicine||0);n++){
-    if(countExpeditionSupply('medicine')<1) break;
-    consumeOneFromBagOrStore('medicine');
-  }
-  for(let n=0;n<(req.torch||0);n++){
-    if(countExpeditionSupply('torch')<1) break;
-    consumeOneFromBagOrStore('torch');
+  if(expeditionTorchRequired(tier)){
+    for(let n=0;n<(tier.requirements?.torch||0);n++){
+      if(countExpeditionSupply('torch')<1) break;
+      consumeOneFromBagOrStore('torch');
+    }
   }
 }
 
@@ -1356,6 +1597,130 @@ function formatExpeditionLootSummary(rewards){
   return entries.map(e=>e.def.icon+' '+e.def.name+' ×'+e.count).join('<br>');
 }
 
+const expeditionStarGame={ active:false, spawnTimer:null, spawned:0, collected:0, missed:0 };
+
+function markExpeditionStarMissed(star){
+  if(!star||star.classList.contains('collected')||star.classList.contains('missed')) return;
+  star.classList.add('missed','expired');
+  expeditionStarGame.missed=(expeditionStarGame.missed||0)+1;
+  if(star._expireTimer){
+    clearTimeout(star._expireTimer);
+    star._expireTimer=null;
+  }
+  setTimeout(()=>{ if(star.isConnected) star.remove(); }, 480);
+}
+
+function harvestExpeditionStarStats(){
+  const layer=document.getElementById('expedition-trek-stars');
+  if(layer){
+    layer.querySelectorAll('.expedition-trek-star:not(.collected)').forEach(star=>{
+      markExpeditionStarMissed(star);
+    });
+  }
+  return {
+    collected:expeditionStarGame.collected||0,
+    missed:expeditionStarGame.missed||0,
+    spawned:expeditionStarGame.spawned||0,
+  };
+}
+
+function collectExpeditionStar(){
+  expeditionStarGame.collected=(expeditionStarGame.collected||0)+1;
+  if(!state.pockets) state.pockets={ fire:0, water:0, earth:0, air:0, magic:0 };
+  state.pockets.air=(state.pockets.air||0)+1;
+  const m=SHARD_META.air;
+  grantXP('exploration', EXPEDITION_STAR_EXPLORATION_XP, null, {
+    skipShardDrop:true, keepActivities:true, deferSync:true,
+  });
+  grantXP('air', EXPEDITION_STAR_AIR_XP, null, {
+    skipShardDrop:true, keepActivities:true, deferSync:true,
+  });
+  if(!state._seenShard){
+    state._seenShard=true;
+    showFoundBanner('POCKET FIND!', m.icon,
+      'An elemental shard — tiny enough to live in your pockets. It uses no bag space. You\'ll gather these while training skills, for magic later.',
+      'GOT IT', ()=>{ if(openPanel==='inv') renderInvPanel(); syncUI(); });
+  }else{
+    showQuickToast('⭐ +' + EXPEDITION_STAR_EXPLORATION_XP + ' Exploration • +' + EXPEDITION_STAR_AIR_XP + ' Air • ' + m.icon);
+  }
+  flashSkillPill('exploration');
+  flashSkillPill('air');
+  if(openPanel==='inv') renderInvPanel();
+  scheduleSaveGame();
+}
+
+function burstExpeditionStarSparkles(star, layer){
+  if(!star||!layer) return;
+  const rect=star.getBoundingClientRect();
+  const layerRect=layer.getBoundingClientRect();
+  const cx=rect.left+rect.width/2-layerRect.left;
+  const cy=rect.top+rect.height/2-layerRect.top;
+  const glyphs=['✨','⭐','✦'];
+  for(let i=0;i<6;i++){
+    const spark=document.createElement('span');
+    spark.className='expedition-trek-star-sparkle';
+    spark.textContent=glyphs[i%glyphs.length];
+    spark.style.left=(cx+(Math.random()*36-18))+'px';
+    spark.style.top=(cy+(Math.random()*36-18))+'px';
+    spark.style.animationDelay=(i*0.04)+'s';
+    layer.appendChild(spark);
+    setTimeout(()=>spark.remove(), 650);
+  }
+}
+
+function spawnExpeditionStar(){
+  const layer=document.getElementById('expedition-trek-stars');
+  if(!expeditionStarGame.active||!layer) return;
+  const star=document.createElement('button');
+  star.type='button';
+  star.className='expedition-trek-star';
+  star.setAttribute('aria-label','Collect star shard');
+  star.textContent='⭐';
+  star.style.left=(10+Math.random()*80)+'%';
+  star.style.top=(14+Math.random()*56)+'%';
+  star.style.animationDelay=(expeditionStarGame.spawned*0.04)+'s';
+  expeditionStarGame.spawned=(expeditionStarGame.spawned||0)+1;
+  star._expireTimer=setTimeout(()=>markExpeditionStarMissed(star), EXPEDITION_STAR_LIFETIME_MS);
+  star.onclick=(e)=>{
+    e.stopPropagation();
+    e.preventDefault();
+    if(!expeditionStarGame.active||star.classList.contains('collected')||star.classList.contains('missed')) return;
+    if(star._expireTimer){
+      clearTimeout(star._expireTimer);
+      star._expireTimer=null;
+    }
+    star.classList.add('collected');
+    collectExpeditionStar();
+    burstExpeditionStarSparkles(star, layer);
+    setTimeout(()=>star.remove(), 520);
+  };
+  layer.appendChild(star);
+}
+
+function startExpeditionStarGame(){
+  stopExpeditionStarGame();
+  const layer=document.getElementById('expedition-trek-stars');
+  if(layer) layer.innerHTML='';
+  expeditionStarGame.active=true;
+  expeditionStarGame.spawned=0;
+  expeditionStarGame.collected=0;
+  expeditionStarGame.missed=0;
+  const spawnNext=()=>{
+    if(!expeditionStarGame.active) return;
+    spawnExpeditionStar();
+    expeditionStarGame.spawnTimer=setTimeout(spawnNext, 520);
+  };
+  spawnNext();
+}
+
+function stopExpeditionStarGame(){
+  expeditionStarGame.active=false;
+  clearTimeout(expeditionStarGame.spawnTimer);
+  expeditionStarGame.spawnTimer=null;
+  const layer=document.getElementById('expedition-trek-stars');
+  if(layer) layer.innerHTML='';
+}
+
 function showExpeditionTrekOverlay(durationMs, tierLabel){
   const overlay=document.getElementById('expedition-trek-overlay');
   const walker=document.getElementById('expedition-trek-walker');
@@ -1371,9 +1736,11 @@ function showExpeditionTrekOverlay(durationMs, tierLabel){
   walker.style.animation='none';
   void walker.offsetWidth;
   walker.style.animation='expedition-walk '+durationMs+'ms linear forwards';
+  startExpeditionStarGame();
 }
 
 function hideExpeditionTrekOverlay(){
+  stopExpeditionStarGame();
   const overlay=document.getElementById('expedition-trek-overlay');
   const setup=document.getElementById('explore-setup-panel');
   const body=document.querySelector('#exploring-screen .explore-body');
@@ -1387,7 +1754,11 @@ function hideExpeditionTrekOverlay(){
   }
 }
 
-function showExpeditionResultsBanner(tier, rewards){
+function showExpeditionResultsBanner(tier, rewards, starStats){
+  const stars=starStats?.collected||0;
+  const missed=starStats?.missed||0;
+  const bonusExplore=stars*EXPEDITION_STAR_EXPLORATION_XP;
+  const bonusAir=stars*EXPEDITION_STAR_AIR_XP;
   let body='Everything you found went straight to storage.<br><br>';
   body+=formatExpeditionLootSummary(rewards);
   body+='<br><br>';
@@ -1397,6 +1768,16 @@ function showExpeditionResultsBanner(tier, rewards){
     body+='No super rare this time. The cave kept its best secrets.';
   }
   body+='<br><br>+'+tier.explorationXp+' Exploration XP';
+  if(stars>0||missed>0){
+    body+='<br><br><strong>Stars on the trek:</strong> '+stars+' collected ⭐';
+    if(missed>0) body+=' • '+missed+' missed (too slow)';
+    if(stars>0){
+      body+='<br>+'+bonusExplore+' bonus Exploration XP • +'+bonusAir+' bonus Air XP';
+      body+='<br>'+stars+' Air Shard'+(stars===1?'':'s')+' collected';
+    }
+  }else{
+    body+='<br><br>No stars collected on the trek.';
+  }
   showFoundBanner('EXPEDITION COMPLETE','🧭',body,'CONTINUE',()=>{
     renderExploring();
     syncUI();
@@ -1418,25 +1799,30 @@ function finishExpedition(tier){
   expeditionTimer=null;
   explore.running=false;
   clearActivity('exploring');
+  const starStats=harvestExpeditionStarStats();
   hideExpeditionTrekOverlay();
   const rewards=rollExpeditionRewards(tier);
   applyExpeditionRewardsToStorage(rewards);
-  grantXP('exploration', tier.explorationXp, null);
+  grantXP('exploration', tier.explorationXp, null, { keepActivities:true });
   completeExpedition();
   scheduleSaveGame();
-  showExpeditionResultsBanner(tier, rewards);
+  syncUI();
+  showExpeditionResultsBanner(tier, rewards, starStats);
 }
 
 function startExpedition(){
   if(explore.running) return;
   const tier=getExpeditionTier(explore.tier);
   const requiredStamina=ensureExpeditionStaminaRequired(tier.key);
+  const requiredHealing=ensureExpeditionHealingRequired(tier.key);
   const staminaPlan=planExpeditionStamina(requiredStamina, explore.focusFishId);
-  const supplies=expeditionSuppliesReady(tier, staminaPlan);
+  const medicinePlan=planExpeditionMedicine(requiredHealing, explore.focusMedicineKey);
+  const supplies=expeditionSuppliesReady(tier, staminaPlan, medicinePlan);
   if(!supplies.ready){
     if(supplies.reason==='rations') showToast('Not enough rations packed for this expedition.');
-    else if(supplies.reason==='either') showToast('Pack medicine or a torch for this expedition.');
-    else showToast('Pack medicine and a torch for this expedition.');
+    else if(supplies.reason==='either') showToast('Pick medicine or a torch for this expedition.');
+    else if(supplies.reason==='medicine') showToast('Not enough medicine packed for this expedition.');
+    else showToast('Pack a torch for this expedition.');
     renderExploring();
     return;
   }
@@ -1444,6 +1830,7 @@ function startExpedition(){
   explore.reqSubmenu=null;
   setActivity('exploring');
   consumeExpeditionStaminaPlan(staminaPlan);
+  if(expeditionMedicineRequired(tier)) consumeExpeditionMedicinePlan(medicinePlan);
   consumeExpeditionOtherSupplies(tier);
   const durationMs=getExpeditionDurationMs(tier.key);
   showExpeditionTrekOverlay(durationMs, tier.label);
@@ -1452,7 +1839,7 @@ function startExpedition(){
 }
 
 function completeExpedition(){
-  clearExpeditionStaminaRolls();
+  clearExpeditionSupplyRolls();
 }
 
 registerActivityRunner('exploring', {

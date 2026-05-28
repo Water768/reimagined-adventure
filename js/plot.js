@@ -503,6 +503,16 @@ function buildCaveCellHtml(def, editMode){
     +(editMode?'<div class="plot-edit-hint">remove</div>':'');
 }
 
+function buildFarmCellHtml(slot, def, editMode){
+  const cfg=typeof getFarmConfig==='function'?getFarmConfig(slot.instanceId):null;
+  const vis=typeof getFarmVisualState==='function'?getFarmVisualState(cfg):{ icon:def?.icon||'🌾', label:'farming plot' };
+  return '<div class="plot-activity-top farm-activity-top">'
+    +'<div class="farm-sprite">'
+    +'<span class="farm-icon">'+vis.icon+'</span>'
+    +'<span class="farm-label">'+vis.label+'</span></div></div>'
+    +(editMode?'<div class="plot-edit-hint">remove</div>':'');
+}
+
 function buildWellCellHtml(slot, def, editMode){
   if(typeof migrateWell==='function') migrateWell();
   const cfg=typeof getWellConfig==='function'?getWellConfig(slot.instanceId):null;
@@ -572,6 +582,7 @@ function defaultPlotConfig(behavior, typeId){
   if(behavior==='cave') return { seen:false };
   if(behavior==='well') return { bricks:0, bucketless:false, equipped:false, freePlaced:false };
   if(behavior==='fire_pit') return { stone:0, clay:0, bricks:0, complete:false, freePlaced:false };
+  if(behavior==='farm') return { seedKey:null, cropKey:null, seedQty:0, plantedAt:null };
   return {};
 }
 
@@ -641,6 +652,7 @@ function clearPlotTileConfig(instanceId, typeId){
   if(def?.behavior==='tree'&&wc.treeInstanceId===instanceId) wc.treeInstanceId=null;
   if(def?.behavior==='well'&&typeof setActiveWell==='function'&&activeWellInstanceId===instanceId) setActiveWell(null);
   if(def?.behavior==='fire_pit'&&typeof setActiveFirePit==='function'&&activeFirePitInstanceId===instanceId) setActiveFirePit(null);
+  if(def?.behavior==='farm'&&typeof setActiveFarm==='function'&&activeFarmInstanceId===instanceId) setActiveFarm(null);
   delete state.plotConfigs[instanceId];
 }
 
@@ -1510,6 +1522,16 @@ function createPlotCellElement(x,y,wbData){
     return cell;
   }
 
+  if(def.behavior==='farm'){
+    const cfg=typeof getFarmConfig==='function'?getFarmConfig(slot.instanceId):null;
+    const vis=typeof getFarmVisualState==='function'?getFarmVisualState(cfg):null;
+    cell.classList.add('cell-farm');
+    if(vis?.stage==='growing') cell.classList.add('farm-growing');
+    if(vis?.stage==='ready') cell.classList.add('farm-ready');
+    cell.innerHTML=buildFarmCellHtml(slot, def, editMode);
+    return cell;
+  }
+
   if(def.behavior==='well'){
     cell.classList.add('cell-well');
     cell.innerHTML=buildWellCellHtml(slot, def, editMode);
@@ -1551,6 +1573,7 @@ function renderPlotGrid(){
   updateQuarryCells();
   if(typeof updateWellCells==='function') updateWellCells();
   if(typeof updateFirePitCells==='function') updateFirePitCells();
+  if(typeof updateFarmCells==='function') updateFarmCells();
   hideAllPlotActivityMenus();
   applyPlotPan();
   if(plotNeedsHomeCenter){
@@ -1653,6 +1676,10 @@ function handlePlotPointerTap(e, cell, waterSurface){
     }
     if(def?.behavior==='cave'){
       openExploringMenu(slot.instanceId);
+      return;
+    }
+    if(def?.behavior==='farm'){
+      openFarmPlotMenu(slot.instanceId);
       return;
     }
     if(def?.behavior==='well'){

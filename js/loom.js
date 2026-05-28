@@ -69,27 +69,6 @@ function renderWonkyLoomCellContent(el){
   };
 }
 
-function migrateFabricItems(){
-  const rename=[
-    ['bandage','soothing_bandage',FABRIC_ITEMS.soothing_bandage.icon,FABRIC_ITEMS.soothing_bandage.name],
-  ];
-  rename.forEach(([oldKey,newKey,icon,name])=>{
-    if(state.inventory[oldKey]){
-      const c=state.inventory[oldKey].count;
-      delete state.inventory[oldKey];
-      if(!state.inventory[newKey]) state.inventory[newKey]={ icon, name, count:0 };
-      state.inventory[newKey].count+=c;
-    }
-    if(state.storage[oldKey]){
-      const c=state.storage[oldKey].count;
-      delete state.storage[oldKey];
-      if(!state.storage[newKey]) state.storage[newKey]={ icon, name, count:0 };
-      state.storage[newKey].count+=c;
-    }
-  });
-  if(apothecaryProcessKey==='bandage') apothecaryProcessKey='soothing_bandage';
-}
-
 let loomOverlayCloser=null;
 let activeLoomOverlayCell=null;
 let loomRecipeKey='simple_cloth';
@@ -190,13 +169,21 @@ function getLoomSelectedInputOption(recipe, inp){
   return inp;
 }
 
+function loomMatLineForOption(opt){
+  const def=getFabricItemDef(opt.key)
+    ||getBotanyItemDef?.(opt.key)
+    ||FIBER_DEFS?.[opt.key]
+    ||THREAD_DEFS&&Object.values(THREAD_DEFS).find(t=>t.key===opt.key);
+  return formatRecipeMatLine(def?.name||opt.key, opt.qty, loomItemStock(opt.key));
+}
+
 function loomSelectedInputStockLine(recipe){
   const inp=recipe.inputs[0];
   const opt=getLoomSelectedInputOption(recipe, inp);
   if(!opt) return 'No material selected';
   const stock=loomItemStock(opt.key);
   const stockCls=wbStockClass(stock>=opt.qty?1:0);
-  return '<span class="wb-mat-pick-avail '+stockCls+'">'+loomInputOptionLabel(opt)+' — '+formatAvailableCount(stock)+'</span>';
+  return '<span class="wb-mat-pick-avail '+stockCls+'">'+loomMatLineForOption(opt)+'</span>';
 }
 
 function loomSelectedInputHasStock(recipe){
@@ -213,7 +200,29 @@ function selectLoomInputOption(recipeKey, inputKey){
 }
 
 function migrateLoomRecipeKey(){
+  if(loomRecipeKey==='bandage') loomRecipeKey='clean_bandage';
   if(!LOOM_RECIPES[loomRecipeKey]) loomRecipeKey='simple_cloth';
+}
+
+function migrateCleanBandageKey(){
+  if(state._cleanBandageKeyMigrated) return;
+  state._cleanBandageKeyMigrated=true;
+  const cleanDef=getFabricItemDef('clean_bandage');
+  const sootheDef=getFabricItemDef('soothing_bandage');
+  ['inventory','storage'].forEach(storeName=>{
+    const store=state[storeName];
+    if(!store?.bandage) return;
+    const item=store.bandage;
+    const count=item.count||0;
+    if(count<=0){ delete store.bandage; return; }
+    const legacySoothing=/soothing/i.test(item.name||'');
+    const targetKey=legacySoothing?'soothing_bandage':'clean_bandage';
+    const def=legacySoothing?sootheDef:cleanDef;
+    if(!store[targetKey]) store[targetKey]={ icon:def?.icon||item.icon, name:def?.name||item.name, count:0 };
+    store[targetKey].count+=count;
+    delete store.bandage;
+  });
+  if(loomRecipeKey==='bandage') loomRecipeKey='clean_bandage';
 }
 
 function loomItemStock(key){
@@ -250,13 +259,10 @@ function pickLoomInputOption(inp, recipeId){
 
 function loomInputStockLine(inp){
   if(isOneOfLoomInput(inp)){
-    return inp.oneOf.map(opt=>{
-      const stock=loomItemStock(opt.key);
-      return loomInputOptionLabel(opt)+' — '+formatAvailableCount(stock);
-    }).join(' • ');
+    return inp.oneOf.map(opt=>loomMatLineForOption(opt)).join(' • ');
   }
   const def=getFabricItemDef(inp.key)||getBotanyItemDef(inp.key)||FIBER_DEFS?.[inp.key];
-  return (def?.name||inp.key)+' — '+formatAvailableCount(loomItemStock(inp.key));
+  return formatRecipeMatLine(def?.name||inp.key, inp.qty, loomItemStock(inp.key));
 }
 
 function loomRecipeStockLine(recipe){
@@ -345,7 +351,7 @@ function loomRecipePickerStockLine(recipe){
   const inp=recipe.inputs[0];
   const opt=getLoomSelectedInputOption(recipe, inp);
   if(!opt) return successLine;
-  return loomInputOptionLabel(opt)+' — '+formatAvailableCount(loomItemStock(opt.key))+' • '+successLine;
+  return loomMatLineForOption(opt)+' • '+successLine;
 }
 
 function renderLoomRecipePickerList(){
@@ -408,7 +414,7 @@ function renderLoomMaterialPanel(recipe){
         +'<span class="wb-mat-icon">'+loomInputOptionIcon(opt)+'</span>'
         +'<span class="wb-mat-info">'
         +'<span class="wb-mat-name">'+loomInputOptionLabel(opt)+'</span>'
-        +'<span class="wb-mat-stock '+wbStockClass(hasEnough?1:0)+'">'+formatAvailableCount(stock)+' available • '+loomSuccessPct(recipe, opt)+'% success</span>'
+        +'<span class="wb-mat-stock '+wbStockClass(hasEnough?1:0)+'">'+loomMatLineForOption(opt)+' • '+loomSuccessPct(recipe, opt)+'% success</span>'
         +'</span></div>';
     }).join('');
   }
@@ -476,12 +482,13 @@ function doLoomWeaveAttempt(recipeKey){
   const success=Math.random()<rate;
   const needQty=picked.qty||1;
   if(success){
+    const invBefore=invTotal();
     if(!consumeLoomMaterial(picked.key, needQty)){
       showToast('Could not take ingredients.');
       return { ok:false };
     }
     const out=getFabricItemDef(recipe.outputKey);
-    invAddDirect(out.key,out.icon,out.name,1);
+    invAddDirect(out.key,out.icon,out.name,1,{ pickupBaseline:invBefore });
     grantXP('tailoring',recipe.xpSuccess,null,{ deferSync:loomProcess.running, keepActivities:true });
     addActivityLog('loom-log',out.icon+' '+out.name+' woven! +'+recipe.xpSuccess+' Tailoring','success');
     if(!loomProcess.running) showToast(out.icon+' '+out.name+' woven!');

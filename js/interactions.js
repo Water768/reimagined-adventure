@@ -196,6 +196,20 @@ function closePetsScreen(){
 
 let viewingPetId=null;
 let petLevelPanelOpen=false;
+let magpiePartnerFocusSeedKey=null;
+
+function getMagpiePartnerAdoptStatus(){
+  const seedKey=resolveMagpieSeedKey(magpiePartnerFocusSeedKey);
+  const need=MAGPIE_ADOPT_SEED_COST;
+  const stock=seedKey?itemCountBagAndStore(seedKey):0;
+  const seedDef=seedKey?getBotanySeedDef(seedKey):null;
+  return { seedKey, need, stock, seedDef, canAdopt:!!seedKey&&stock>=need };
+}
+
+function setMagpiePartnerSeedFocus(seedKey){
+  magpiePartnerFocusSeedKey=seedKey||null;
+  renderPetPartnerPanel();
+}
 
 function openPetPartnerScreen(){
   const max=maxOwnedPets();
@@ -208,6 +222,37 @@ function openPetPartnerScreen(){
   document.getElementById('pet-detail-panel').style.display='none';
   document.getElementById('pet-partner-panel').style.display='block';
   renderPetPartnerPanel();
+}
+
+function buildMagpiePartnerSeedFocusHtml(){
+  const available=getSeedsWithStock();
+  const status=getMagpiePartnerAdoptStatus();
+  let html='<div class="store-items" style="margin-bottom:12px">'
+    +'<div class="store-items-title">MAGPie SEED FOCUS</div>'
+    +'<div class="explore-req-submenu-section">PARTNER COST</div>'
+    +'<div class="store-line" style="margin-bottom:8px">'+MAGPIE_ADOPT_SEED_COST+' seeds to partner a Magpie</div>'
+    +'<button type="button" class="explore-req-submenu-item'+(!magpiePartnerFocusSeedKey?' active':'')+'" onclick="setMagpiePartnerSeedFocus(null)">'
+    +'<span>Lowest tier available</span>'
+    +'<span class="explore-req-submenu-meta">auto-pick cheapest seed you have</span>'
+    +'</button>';
+  if(!available.length){
+    html+='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:6px 0 2px">No seeds in bag or storage.</div>';
+  }else{
+    html+=available.map(seed=>{
+      const active=magpiePartnerFocusSeedKey===seed.key?' active':'';
+      const count=itemCountBagAndStore(seed.key);
+      return '<button type="button" class="explore-req-submenu-item'+active+'" onclick="setMagpiePartnerSeedFocus(\''+seed.key+'\')">'
+        +'<span>'+seed.icon+' '+seed.name+'</span>'
+        +'<span class="explore-req-submenu-meta">'+count+' available</span>'
+        +'</button>';
+    }).join('');
+  }
+  if(status.seedDef){
+    const cls=wbStockClass(status.canAdopt?1:0);
+    html+='<div class="store-line '+cls+'" style="margin-top:8px">Uses: '+status.seedDef.icon+' '+status.seedDef.name+' · '+status.stock+'/'+status.need+'</div>';
+  }
+  html+='</div>';
+  return html;
 }
 
 function closePetPartnerScreen(){
@@ -223,6 +268,20 @@ function petPartnerCostClass(have, need){
 }
 
 function buildPetPartnerOptionHtml(def){
+  if(petAdoptsWithSeeds(def)){
+    const status=getMagpiePartnerAdoptStatus();
+    const costCls=petPartnerCostClass(status.stock, status.need);
+    const seedName=status.seedDef?.name||'seeds';
+    return '<div class="pet-partner-card"'+(status.canAdopt?'':' style="opacity:0.72"')+' onclick="adoptPet(\''+def.key+'\')">'
+      +'<div class="pet-partner-card-header">'
+      +'<span class="pet-partner-icon">'+def.icon+'</span>'
+      +'<div class="pet-partner-card-body">'
+      +'<div class="pet-partner-name">'+def.name+'</div>'
+      +'<div class="pet-partner-desc">'+def.description+'</div>'
+      +'<div class="pet-partner-cost '+costCls+'">['+status.stock+'/'+status.need+' '+seedName+']</div>'
+      +'</div></div>'
+      +'</div>';
+  }
   const have=itemCountBagAndStore(def.adoptCostKey);
   const need=def.adoptCostAmount;
   const costCls=petPartnerCostClass(have, need);
@@ -249,6 +308,7 @@ function renderPetPartnerPanel(){
     +'<div class="wb-item-sub">Choose a companion</div></div></div>'
     +'<div class="pet-following-empty pets-partner-intro">'+PET_PARTNER_INTRO+'</div>'
     +'</div>'
+    +buildMagpiePartnerSeedFocusHtml()
     +'<div class="store-items" style="margin-bottom:12px">'
     +'<div class="store-items-title">AVAILABLE PETS</div>'
     +'<div class="pet-partner-list">'+optionsHtml+'</div>'
@@ -275,11 +335,27 @@ function closePetDetail(){
 function getPetAbilityText(pet, equipped){
   const def=getPetSpeciesDef(pet.type);
   if(def.passiveType==='nailCollect'){
-    const drops=getPetMagpieNailDropSummary(getPetLevel(pet));
+    const drops=getPetNailCollectDropSummary(getPetLevel(pet));
     if(equipped){
       return pet.name+' follows you scavenging shiny nails — 1 delivered to storage each minute ('+drops+').';
     }
     return 'Equip '+pet.name+' to follow you. While equipped, they stash 1 nail per minute in storage ('+drops+').';
+  }
+  if(def.passiveType==='oreScout'){
+    const goldPct=getMagpieGoldOreChancePercent(getPetLevel(pet));
+    const diaPct=getMagpieDiamondChancePercent(getPetLevel(pet));
+    let line=pet.name+(equipped?' follows you hunting treasure':' can hunt treasure when equipped')
+      +' — '+goldPct+'% chance per minute for gold ore';
+    if(diaPct>0) line+=', '+diaPct+'% for diamonds';
+    line+='.';
+    return line;
+  }
+  if(def.passiveType==='seedCollect'){
+    const range=getDormouseSeedCollectRange(getPetLevel(pet));
+    if(equipped){
+      return pet.name+' dozes nearby but still forages — '+range.min+'–'+range.max+' random seeds to storage each minute.';
+    }
+    return 'Equip '+pet.name+' to forage. While equipped, they stash '+range.min+'–'+range.max+' random seeds per minute in storage.';
   }
   if(def.passiveType==='storageRedirect'){
     const pct=Math.round(getPetDogFetchChance(pet)*100);
@@ -314,6 +390,42 @@ function buildPetLockedSlotHtml(unlockLvl){
     +'</div></div>';
 }
 
+function buildMagpieSeedFocusHtml(pet){
+  const available=getSeedsWithStock();
+  const resolved=resolveMagpieLevelUpSeedKey(pet);
+  let html='<div class="explore-req-submenu-section" style="margin-top:10px">SEED FOCUS</div>'
+    +'<button type="button" class="explore-req-submenu-item'+(!pet.focusSeedKey?' active':'')+'" onclick="setMagpieSeedFocus(\''+pet.id+'\',null)">'
+    +'<span>Lowest tier available</span>'
+    +'<span class="explore-req-submenu-meta">auto-pick cheapest seed you have</span>'
+    +'</button>';
+  if(!available.length){
+    html+='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:6px 0 2px">No seeds in bag or storage.</div>';
+  }else{
+    html+=available.map(seed=>{
+      const active=pet.focusSeedKey===seed.key?' active':'';
+      const count=itemCountBagAndStore(seed.key);
+      return '<button type="button" class="explore-req-submenu-item'+active+'" onclick="setMagpieSeedFocus(\''+pet.id+'\',\''+seed.key+'\')">'
+        +'<span>'+seed.icon+' '+seed.name+'</span>'
+        +'<span class="explore-req-submenu-meta">'+count+' available</span>'
+        +'</button>';
+    }).join('');
+  }
+  if(resolved){
+    const meta=getPetLevelUpItemMeta(pet);
+    const need=getPetLevelUpItemCount(pet);
+    html+='<div class="store-line" style="margin-top:8px;font-size:13px">Level-up uses: '+(meta?.icon||'?')+' '+(meta?.name||resolved)+' ×'+need+'</div>';
+  }
+  return html;
+}
+
+function setMagpieSeedFocus(petId, seedKey){
+  const pet=state.pets.find(p=>p.id===petId);
+  if(!pet||pet.type!=='magpie') return;
+  pet.focusSeedKey=seedKey||null;
+  renderPetDetail(petId);
+  scheduleSaveGame();
+}
+
 function buildPetLevelPanelHtml(pet){
   const status=getPetLevelUpStatus(pet);
   let body='<div class="pet-level-block">'
@@ -330,12 +442,21 @@ function buildPetLevelPanelHtml(pet){
       +'<span class="pet-level-chevron">'+(petLevelPanelOpen?'▼':'▶')+'</span>'
       +'</div>';
     if(petLevelPanelOpen){
+      const item=status.item;
       const itemCls=wbStockClass(status.itemOk?1:0);
       body+='<div class="pet-level-expand">'
-        +'<div class="pet-level-benefit">'+status.benefit+'</div>'
-        +'<div class="pet-stat-row"><span>'+status.item.icon+' '+status.item.name+' ×'+status.itemNeed+'</span>'
-        +'<span class="wb-mat-pick-avail '+itemCls+'">'+formatAvailableCount(status.stock)+'</span></div>'
-        +'<div class="store-line" style="margin-top:8px;font-size:14px">Earns 1 progress each minute while following you.</div>'
+        +'<div class="pet-level-benefit">'+status.benefit+'</div>';
+      if(status.usesSeeds){
+        body+=buildMagpieSeedFocusHtml(pet);
+        if(item){
+          body+='<div class="pet-stat-row"><span>'+item.icon+' '+item.name+' ×'+status.itemNeed+'</span>'
+            +'<span class="wb-mat-pick-avail '+itemCls+'">'+formatAvailableCount(status.stock)+'</span></div>';
+        }
+      }else if(item){
+        body+='<div class="pet-stat-row"><span>'+item.icon+' '+item.name+' ×'+status.itemNeed+'</span>'
+          +'<span class="wb-mat-pick-avail '+itemCls+'">'+formatAvailableCount(status.stock)+'</span></div>';
+      }
+      body+='<div class="store-line" style="margin-top:8px;font-size:14px">Earns 1 progress each minute while following you.</div>'
         +'<button type="button" class="wb-btn'+(status.canLevelUp?'':' pet-level-btn-disabled')+'" style="margin-top:10px;width:100%" onclick="'+(status.canLevelUp?'levelUpPet(\''+pet.id+'\');event.stopPropagation();':'')+'">Level up → Lv '+status.nextLevel+'</button>'
         +'</div>';
     }
@@ -360,7 +481,8 @@ function levelUpPet(id){
     return;
   }
   if(!status.canLevelUp){
-    showToast('Need '+status.expReq+' pet progress and '+status.itemNeed+' '+status.item.name+' to level up.');
+    const itemLabel=status.item?(status.itemNeed+' '+status.item.name):'level-up items';
+    showToast('Need '+status.expReq+' pet progress and '+itemLabel+' to level up.');
     renderPetDetail(id);
     return;
   }
@@ -419,7 +541,7 @@ function renderPetDetail(id){
     +'<div><div class="wb-item-name">'+escapeHtml(pet.name)+'</div>'
     +'<div class="wb-item-sub">'+subLine+'</div></div></div>'
     +'<div class="pet-ability-block">'+getPetAbilityText(pet, equipped)+'</div>'
-    +(pet.type==='magpie'?'<div class="pet-magpie-shiny">Ooh, shiny!</div>':'')
+    +(pet.type==='hedgehog'||pet.type==='magpie'?'<div class="pet-magpie-shiny">Ooh, shiny!</div>':'')
     +'<input type="text" class="pet-name-input" id="pet-name-input" maxlength="20" value="'+escapeHtml(pet.name)+'" onchange="savePetName(\''+pet.id+'\',this.value)">'
     +'<div class="pet-stat-row"><span>Birthday</span><span>'+formatPetBirthday(pet.birthday)+'</span></div>'
     +'<div class="pet-stat-row"><span>Active time</span><span>'+formatDuration(getPetActiveTimeMs(pet))+'</span></div>'
@@ -613,6 +735,34 @@ function adoptPet(type){
   if(!def) return;
   if(!state.pets) state.pets=[];
   if(state.pets.length>=maxOwnedPets()){ showToast('No empty pet slots.'); return; }
+  if(petAdoptsWithSeeds(def)){
+    const seedKey=resolveMagpieSeedKey(magpiePartnerFocusSeedKey);
+    const need=MAGPIE_ADOPT_SEED_COST;
+    const seedDef=seedKey?getBotanySeedDef(seedKey):null;
+    if(!seedKey||itemCountBagAndStore(seedKey)<need){
+      showToast('Need '+need+' '+(seedDef?.name||'seeds')+'.');
+      return;
+    }
+    if(!consumeManyFromBagOrStore(seedKey, need)){
+      showToast('Could not pay for seeds.'); return;
+    }
+    const pet=createPet(type);
+    pet.focusSeedKey=magpiePartnerFocusSeedKey||seedKey;
+    state.pets.push(pet);
+    const husbandryXp=husbandryXpForPetAdoption(def);
+    grantXP('husbandry', husbandryXp, null);
+    if(!state.equippedPetIds) state.equippedPetIds=[];
+    if(state.equippedPetIds.length<MAX_EQUIPPED_PETS){
+      pet.equippedSince=Date.now();
+      state.equippedPetIds.push(pet.id);
+    }
+    showToast(def.icon+' '+pet.name+' settles on the bed. Something shiny awaits. +'+husbandryXp+' Husbandry');
+    const partnerOpen=document.getElementById('pet-partner-panel')?.style.display!=='none';
+    if(partnerOpen) closePetPartnerScreen();
+    else renderPetsScreen();
+    syncUI();
+    return;
+  }
   if(itemCountBagAndStore(def.adoptCostKey)<def.adoptCostAmount){
     showToast('Need '+def.adoptCostAmount+' '+def.adoptCostLabel+'.');
     return;
@@ -637,6 +787,10 @@ function adoptPet(type){
     showToast(def.icon+' '+pet.name+' settles on the bed. Ready to fetch.'+xpNote);
   }else if(def.passiveType==='nailCollect'){
     showToast(def.icon+' '+pet.name+' settles on the bed. Ooh, shiny!'+xpNote);
+  }else if(def.passiveType==='oreScout'){
+    showToast(def.icon+' '+pet.name+' settles on the bed. Something shiny awaits.'+xpNote);
+  }else if(def.passiveType==='seedCollect'){
+    showToast(def.icon+' '+pet.name+' curls up — but those paws still find seeds.'+xpNote);
   }else{
     showToast(def.icon+' '+pet.name+' settles on the bed.'+xpNote);
   }
@@ -667,10 +821,50 @@ function tickPetPassives(){
       showQuickToast(pet.name+' found '+sm.icon);
       if(openPanel==='inv') renderInvPanel();
     }else if(def.passiveType==='nailCollect'){
-      const nailKey=rollMagpieNailDrop(getPetLevel(pet));
+      const nailKey=rollNailCollectDrop(getPetLevel(pet));
       if(!nailKey||!grantNailToStorage(nailKey)) return;
       const nail=NAIL_TYPES[nailKey];
       showQuickToast(pet.name+': ooh shiny! '+(nail?.icon||'🔩'));
+    }else if(def.passiveType==='oreScout'){
+      const level=getPetLevel(pet);
+      const goldPct=getMagpieGoldOreChancePercent(level)/100;
+      const diaPct=getMagpieDiamondChancePercent(level)/100;
+      let found=false;
+      if(Math.random()<goldPct){
+        const ore=MINE_RESOURCE_DEFS?.gold_ore;
+        if(ore&&storageAddDirect('gold_ore', ore.icon, ore.name, 1)){
+          showQuickToast(pet.name+' found '+ore.icon+' gold ore!');
+          found=true;
+        }
+      }
+      if(Math.random()<diaPct){
+        const gem=MINE_RESOURCE_DEFS?.diamond;
+        if(gem&&storageAddDirect('diamond', gem.icon, gem.name, 1)){
+          showQuickToast(pet.name+' found '+gem.icon+' diamond!');
+          found=true;
+        }
+      }
+      if(found&&openPanel==='inv') renderInvPanel();
+    }else if(def.passiveType==='seedCollect'){
+      const range=getDormouseSeedCollectRange(getPetLevel(pet));
+      const amount=range.min+Math.floor(Math.random()*(range.max-range.min+1));
+      const counts={};
+      for(let i=0;i<amount;i++){
+        const seedKey=rollRandomBotanySeedKey();
+        const seedDef=getBotanySeedDef(seedKey);
+        if(!seedDef) continue;
+        storageAddDirect(seedKey, seedDef.icon, seedDef.name, 1);
+        counts[seedKey]=(counts[seedKey]||0)+1;
+      }
+      const total=Object.values(counts).reduce((s,n)=>s+n,0);
+      if(total>0){
+        const preview=Object.entries(counts).slice(0,2).map(([key,n])=>{
+          const sd=getBotanySeedDef(key);
+          return (n>1?n+'× ':'')+(sd?.icon||'🌱');
+        }).join(' ');
+        showQuickToast(pet.name+' stashed '+total+' seed'+(total===1?'':'s')+' '+preview);
+        if(openPanel==='inv') renderInvPanel();
+      }
     }
   });
   if(detailRefresh) renderPetDetail(viewingPetId);
@@ -953,13 +1147,14 @@ function cookContinuous(){
 function doCookAttempt(recipeKey){
   const recipe=COOKING_RECIPES[recipeKey];
   if(!recipe||!canCookRecipe(recipe)) return {ok:false};
+  const invBefore=invTotal();
   if(!consumeRawForCook(recipe)) return {ok:false};
   const rate=calcCookSuccess(recipe);
   const success=Math.random()<rate;
   const logId=getCookActivityLogId();
   if(success){
     if(invTotal()<INV_CAP){
-      invAddDirect(recipe.cookedKey,recipe.cookedIcon,recipe.cookedName,1);
+      invAddDirect(recipe.cookedKey,recipe.cookedIcon,recipe.cookedName,1,{ pickupBaseline:invBefore });
       grantXP('cooking',recipe.xpSuccess,null,{ deferSync:cook.running });
       addActivityLog(logId,recipe.cookedIcon+' '+recipe.cookedName+' cooked! +'+recipe.xpSuccess+' Cooking','success');
       return {ok:true,success:true};
@@ -1192,13 +1387,14 @@ function spinContinuous(){
 function doSpinAttempt(recipeKey){
   const recipe=SPINNING_RECIPES[recipeKey];
   if(!recipe||!canSpinRecipe(recipe)) return {ok:false};
+  const invBefore=invTotal();
   const rawInBag=(state.inventory[recipe.rawKey]?.count||0)>0;
   if(!consumeOneFromBagOrStore(recipe.rawKey)) return {ok:false};
   const rate=calcSpinSuccess(recipe);
   const success=Math.random()<rate;
   if(success){
     if(rawInBag||invTotal()<INV_CAP){
-      invAddDirect(recipe.outputKey,recipe.outputIcon,recipe.outputName,1);
+      invAddDirect(recipe.outputKey,recipe.outputIcon,recipe.outputName,1,{ pickupBaseline:invBefore });
       grantXP('tailoring',recipe.xpSuccess,null,{ deferSync:spin.running });
       addActivityLog('sw-log',recipe.outputIcon+' '+recipe.outputName+' spun! +'+recipe.xpSuccess+' Tailoring','success');
       return {ok:true,success:true};

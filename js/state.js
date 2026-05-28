@@ -45,6 +45,7 @@ function getDefaultState(){
     _seenHut:false, _seenPond:false, _seenShard:false, _seenMagicShard:false,
     _seenArchitectureLv2:false,
     exploreStaminaRolls:{},
+    exploreHealingRolls:{},
     wellUnlocked:false,
     wellFinishedUnlocked:false,
     firePitUnlocked:false,
@@ -60,6 +61,10 @@ function invTotal(){ return Object.values(state.inventory).reduce((s,i)=>s+i.cou
 function storageAddDirect(key,icon,name,n){
   if(n<=0) return 0;
   if(!state.storage[key]) state.storage[key]={icon,name,count:0};
+  else{
+    state.storage[key].icon=icon;
+    state.storage[key].name=name;
+  }
   state.storage[key].count+=n;
   return n;
 }
@@ -111,8 +116,9 @@ function invAdd(key,icon,name,n){
   return split.toStorage+add;
 }
 
-function invAddDirect(key,icon,name,n){
+function invAddDirect(key,icon,name,n,opts){
   if(n<=0) return 0;
+  const pickupBaseline=opts?.pickupBaseline;
   const before=invTotal();
   const split=splitInventoryByDogFetch(n);
   if(split.toStorage>0){
@@ -121,8 +127,12 @@ function invAddDirect(key,icon,name,n){
   }
   if(split.toBag<=0) return split.toStorage;
   if(!state.inventory[key]) state.inventory[key]={icon,name,count:0};
+  else{
+    state.inventory[key].icon=icon;
+    state.inventory[key].name=name;
+  }
   state.inventory[key].count+=split.toBag;
-  const net=invTotal()-before;
+  const net=invTotal()-(pickupBaseline!=null?pickupBaseline:before);
   if(net>0) flashInvPickup(icon, net);
   return split.toStorage+split.toBag;
 }
@@ -185,6 +195,14 @@ function itemCountBagAndStore(key, opts){
 function formatAvailableCount(count, infinite){
   if(infinite||count===Infinity) return '∞ available';
   return count+' available';
+}
+
+function formatRecipeMatLine(name, qty, stock, opts){
+  const q=Math.max(1, qty||1);
+  let line=(name||'?')+' ×'+q;
+  if(opts?.unobtainable) line+=' • not obtainable yet';
+  else line+=' • '+formatAvailableCount(stock);
+  return line;
 }
 
 function nailCount(key){
@@ -303,6 +321,12 @@ function getPetIcon(pet){
 function migratePets(){
   if(!state.pets) state.pets=[];
   if(!state.equippedPetIds) state.equippedPetIds=[];
+  if(!state._magpieToHedgehogMigrated){
+    state._magpieToHedgehogMigrated=true;
+    state.pets.forEach(p=>{
+      if(p.type==='magpie') p.type='hedgehog';
+    });
+  }
   state.pets.forEach(p=>{
     if(!p.type) p.type='cat';
     if(!p.birthday) p.birthday=Date.now();
@@ -497,7 +521,7 @@ const fish={ running:false, timer:null, pondInstanceId:null };
 const gather={ running:false, timer:null, instanceId:null, itemsThisSession:0 };
 const wc={ treeInstanceId:null };
 const mine={ running:false, timer:null, instanceId:null, stacks:0 };
-const explore={ instanceId:null, tier:'short', focusFishId:null, reqSubmenu:null, running:false };
+const explore={ instanceId:null, tier:'short', focusFishId:null, focusMedicineKey:null, eitherChoice:null, reqSubmenu:null, running:false };
 const ACTIVITY_MENU_SHOW_MS=3000;
 const plotActivityMenuTimers={};
 const cook={ running:false, timer:null, recipeKey:'goldfish' };

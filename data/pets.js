@@ -18,7 +18,8 @@ const PET_EXP_TO_LEVEL = { 2: 100, 3: 200, 4: 300, 5: 400 };
 const PET_LEVEL_UP_ITEMS = {
   cat: { 2: 'cooked_frog', 3: 'cooked_minnow', 4: 'cooked_trout', 5: 'cooked_salmon' },
   dog: { 2: 'bones', 3: 'large_bone', 4: 'copper_ore', 5: 'iron_ore' },
-  magpie: { 2: 'worms', 3: 'spiderweb', 4: 'silk', 5: 'enchanted_web' },
+  hedgehog: { 2: 'worms', 3: 'spiderweb', 4: 'silk', 5: 'enchanted_web' },
+  dormouse: { 2: 'berries', 3: 'berries', 4: 'berries', 5: 'berries' },
 };
 
 const PET_SPECIES = {
@@ -47,17 +48,42 @@ const PET_SPECIES = {
     description: 'A loyal fetcher. When following you, sometimes carries new finds straight to storage.',
     namePool: ['Buddy', 'Rex', 'Maple', 'Scout', 'Copper', 'Daisy', 'Bear', 'Pepper', 'Rusty', 'Nova'],
   },
+  hedgehog: {
+    key: 'hedgehog',
+    name: 'Hedgehog',
+    icon: '🦔',
+    tier: 1,
+    adoptCostKey: 'worms',
+    adoptCostAmount: 100,
+    adoptCostLabel: 'worms',
+    passiveType: 'nailCollect',
+    description: 'A prickly scavenger. While following you, collects one nail per minute and delivers it straight to storage.',
+    namePool: ['Spike', 'Prickle', 'Chestnut', 'Hazel', 'Bramble', 'Needle', 'Acorn', 'Thistle'],
+  },
   magpie: {
     key: 'magpie',
     name: 'Magpie',
     icon: '🐦',
     tier: 1,
-    adoptCostKey: 'worms',
+    adoptUsesSeeds: true,
     adoptCostAmount: 500,
-    adoptCostLabel: 'worms',
-    passiveType: 'nailCollect',
-    description: 'A clever scavenger. While following you, collects one nail per minute and delivers it straight to storage.',
+    adoptCostLabel: 'seeds',
+    passiveType: 'oreScout',
+    levelUpUsesSeeds: true,
+    description: 'A treasure hunter. While following, sometimes returns gold ore — and from Lv 3, a chance at diamonds.',
     namePool: ['Pied', 'Magpie', 'Spark', 'Ink', 'Flash', 'Chatter', 'Slate', 'Patch'],
+  },
+  dormouse: {
+    key: 'dormouse',
+    name: 'Dormouse',
+    icon: '🐭',
+    tier: 1,
+    adoptCostKey: 'berries',
+    adoptCostAmount: 40,
+    adoptCostLabel: 'berries',
+    passiveType: 'seedCollect',
+    description: 'A sleepy forager. Each minute, gathers random seeds and stashes them in storage.',
+    namePool: ['Dozy', 'Pip', 'Nutkin', 'Sleepy', 'Hazel', 'Crumbs', 'Whisk', 'Pocket'],
   },
 };
 
@@ -81,8 +107,8 @@ function getPetTier(pet){
 const PET_TREAT_AMOUNT_MIN=1;
 const PET_TREAT_AMOUNT_MAX=50;
 
-/** Magpie nail drop weights per pet level — iron / copper / forged / ironbark / gilded (%). */
-const MAGPIE_NAIL_DROP_TABLES={
+/** Hedgehog nail drop weights per pet level — iron / copper / forged / ironbark / gilded (%). */
+const NAIL_COLLECT_DROP_TABLES={
   1:[50,40,6,3,1],
   2:[0,80,10,8,2],
   3:[0,0,60,35,5],
@@ -100,6 +126,67 @@ function getPetTreatDayKey(date){
 
 function rollPetTreatAmount(){
   return PET_TREAT_AMOUNT_MIN+Math.floor(Math.random()*(PET_TREAT_AMOUNT_MAX-PET_TREAT_AMOUNT_MIN+1));
+}
+
+const MAGPIE_ADOPT_SEED_COST=500;
+const MAGPIE_SEED_LEVEL_COSTS={ 2:500, 3:1000, 4:1500, 5:2000, 6:2500 };
+
+function getSeedsWithStock(){
+  if(typeof getBotanySeedsSorted!=='function') return [];
+  return getBotanySeedsSorted().filter(seed=>itemCountBagAndStore(seed.key)>0);
+}
+
+function petAdoptsWithSeeds(def){
+  return !!def?.adoptUsesSeeds;
+}
+
+function getMagpieSeedLevelCost(nextLevel){
+  return MAGPIE_SEED_LEVEL_COSTS[nextLevel]??null;
+}
+
+function resolveMagpieSeedKey(focusSeedKey){
+  const available=getSeedsWithStock();
+  if(!available.length) return null;
+  if(focusSeedKey){
+    const focused=available.find(s=>s.key===focusSeedKey);
+    if(focused) return focused.key;
+  }
+  return available[0].key;
+}
+
+function resolveMagpieLevelUpSeedKey(pet){
+  return resolveMagpieSeedKey(pet?.focusSeedKey);
+}
+
+function getMagpieSeedFocusLabel(pet){
+  const key=resolveMagpieLevelUpSeedKey(pet);
+  if(!key) return 'No seeds available';
+  const def=getBotanySeedDef(key);
+  return (def?.icon||'🌱')+' '+(def?.name||key);
+}
+
+function rollRandomBotanySeedKey(){
+  if(typeof BOTANY_SEED_LIST==='undefined'||!BOTANY_SEED_LIST.length) return 'flax_seeds';
+  const seed=BOTANY_SEED_LIST[Math.floor(Math.random()*BOTANY_SEED_LIST.length)];
+  return seed.key;
+}
+
+function getDormouseSeedCollectRange(level){
+  const lv=Math.min(PET_MAX_LEVEL, Math.max(1, Number(level)||1));
+  const min=(lv-1)*2+1;
+  const max=(lv-1)*2+2;
+  return { min, max };
+}
+
+function getMagpieGoldOreChancePercent(level){
+  const lv=Math.min(PET_MAX_LEVEL, Math.max(1, Number(level)||1));
+  return lv;
+}
+
+function getMagpieDiamondChancePercent(level){
+  const lv=Math.min(PET_MAX_LEVEL, Math.max(1, Number(level)||1));
+  if(lv<3) return 0;
+  return lv-2;
 }
 
 function getPetTreatItemMeta(def){
@@ -215,9 +302,14 @@ function grantPetFollowProgress(pet){
   return true;
 }
 
+function petUsesSeedLevelUp(pet){
+  return !!getPetSpeciesDef(pet?.type)?.levelUpUsesSeeds;
+}
+
 function getPetLevelUpItemKey(pet){
   const next=getPetLevel(pet)+1;
   if(next>PET_MAX_LEVEL) return null;
+  if(petUsesSeedLevelUp(pet)) return resolveMagpieLevelUpSeedKey(pet);
   const map=PET_LEVEL_UP_ITEMS[pet?.type]||PET_LEVEL_UP_ITEMS.cat;
   return map[next]||null;
 }
@@ -225,6 +317,10 @@ function getPetLevelUpItemKey(pet){
 function getPetLevelUpItemMeta(pet){
   const key=getPetLevelUpItemKey(pet);
   if(!key) return null;
+  if(petUsesSeedLevelUp(pet)){
+    const def=getBotanySeedDef(key);
+    if(def) return { key, icon:def.icon, name:def.name };
+  }
   return getPetTreatItemMeta({ adoptCostKey: key });
 }
 
@@ -232,9 +328,9 @@ function getCatShardChancePercent(level){
   return Math.min(PET_MAX_LEVEL, Math.max(1, level|0))+1;
 }
 
-function rollMagpieNailDrop(petLevel){
+function rollNailCollectDrop(petLevel){
   const lv=Math.min(PET_MAX_LEVEL, Math.max(1, Number(petLevel)||1));
-  const weights=MAGPIE_NAIL_DROP_TABLES[lv]||MAGPIE_NAIL_DROP_TABLES[1];
+  const weights=NAIL_COLLECT_DROP_TABLES[lv]||NAIL_COLLECT_DROP_TABLES[1];
   const roll=Math.random()*100;
   let acc=0;
   for(let i=0;i<NAIL_TIER_ORDER.length;i++){
@@ -244,9 +340,9 @@ function rollMagpieNailDrop(petLevel){
   return NAIL_TIER_ORDER[NAIL_TIER_ORDER.length-1];
 }
 
-function formatMagpieNailDropTable(petLevel){
+function formatNailCollectDropTable(petLevel){
   const lv=Math.min(PET_MAX_LEVEL, Math.max(1, Number(petLevel)||1));
-  const weights=MAGPIE_NAIL_DROP_TABLES[lv]||MAGPIE_NAIL_DROP_TABLES[1];
+  const weights=NAIL_COLLECT_DROP_TABLES[lv]||NAIL_COLLECT_DROP_TABLES[1];
   return NAIL_TIER_ORDER.map((key,i)=>{
     const pct=weights[i]||0;
     if(!pct) return null;
@@ -255,8 +351,8 @@ function formatMagpieNailDropTable(petLevel){
   }).filter(Boolean).join(' · ');
 }
 
-function getPetMagpieNailDropSummary(petLevel){
-  return formatMagpieNailDropTable(petLevel);
+function getPetNailCollectDropSummary(petLevel){
+  return formatNailCollectDropTable(petLevel);
 }
 
 function getPetShardPassiveChance(pet){
@@ -275,7 +371,17 @@ function getPetDogFetchChance(pet){
 function getPetLevelBenefitPreview(pet, targetLevel){
   const def=getPetSpeciesDef(pet?.type);
   if(def.passiveType==='nailCollect'){
-    return 'Nail finds shift toward better tiers: '+formatMagpieNailDropTable(targetLevel)+'.';
+    return 'Nail finds shift toward better tiers: '+formatNailCollectDropTable(targetLevel)+'.';
+  }
+  if(def.passiveType==='oreScout'){
+    let line='Gold ore chance rises to '+getMagpieGoldOreChancePercent(targetLevel)+'% per minute.';
+    const dia=getMagpieDiamondChancePercent(targetLevel);
+    if(dia>0) line+=' Diamond chance: '+dia+'%.';
+    return line;
+  }
+  if(def.passiveType==='seedCollect'){
+    const range=getDormouseSeedCollectRange(targetLevel);
+    return 'Gathers '+range.min+'–'+range.max+' random seeds per minute to storage.';
   }
   if(def.passiveType==='shard'){
     return 'Shard find chance rises to '+getCatShardChancePercent(targetLevel)+'% per minute while following.';
@@ -290,7 +396,17 @@ function getPetLevelBenefitPreview(pet, targetLevel){
 function getPetLevelUpGainMessage(pet, newLevel){
   const def=getPetSpeciesDef(pet?.type);
   if(def.passiveType==='nailCollect'){
-    return pet.name+' reached Lv '+newLevel+'! Nail finds: '+formatMagpieNailDropTable(newLevel)+'.';
+    return pet.name+' reached Lv '+newLevel+'! Nail finds: '+formatNailCollectDropTable(newLevel)+'.';
+  }
+  if(def.passiveType==='oreScout'){
+    let line=pet.name+' reached Lv '+newLevel+'! Gold ore at '+getMagpieGoldOreChancePercent(newLevel)+'% per minute.';
+    const dia=getMagpieDiamondChancePercent(newLevel);
+    if(dia>0) line+=' Diamond chance: '+dia+'%.';
+    return line;
+  }
+  if(def.passiveType==='seedCollect'){
+    const range=getDormouseSeedCollectRange(newLevel);
+    return pet.name+' reached Lv '+newLevel+'! Gathers '+range.min+'–'+range.max+' seeds per minute.';
   }
   if(def.passiveType==='shard'){
     return pet.name+' reached Lv '+newLevel+'! Shard hunts at '+getCatShardChancePercent(newLevel)+'% per minute.';
@@ -301,6 +417,13 @@ function getPetLevelUpGainMessage(pet, newLevel){
   return pet.name+' reached Lv '+newLevel+'! Treats now grant '+newLevel+'× Husbandry XP.';
 }
 
+function getPetLevelUpItemCount(pet){
+  if(petUsesSeedLevelUp(pet)){
+    return getMagpieSeedLevelCost(getPetLevel(pet)+1);
+  }
+  return PET_LEVEL_ITEM_COUNT;
+}
+
 function getPetLevelUpStatus(pet){
   const level=getPetLevel(pet);
   const expReq=getPetExpRequiredForNextLevel(pet);
@@ -309,10 +432,10 @@ function getPetLevelUpStatus(pet){
   }
   const exp=getPetExp(pet);
   const item=getPetLevelUpItemMeta(pet);
-  const itemNeed=PET_LEVEL_ITEM_COUNT;
+  const itemNeed=getPetLevelUpItemCount(pet);
   const stock=item?itemCountBagAndStore(item.key):0;
   const expOk=exp>=expReq;
-  const itemOk=stock>=itemNeed;
+  const itemOk=!!item&&stock>=itemNeed;
   return {
     maxLevel:false,
     level,
@@ -326,6 +449,7 @@ function getPetLevelUpStatus(pet){
     itemOk,
     canLevelUp:expOk&&itemOk,
     benefit:getPetLevelBenefitPreview(pet, level+1),
+    usesSeeds:petUsesSeedLevelUp(pet),
   };
 }
 
