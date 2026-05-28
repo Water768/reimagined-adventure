@@ -1039,7 +1039,7 @@ function expeditionSuppliesReady(tier, staminaPlan){
 function expeditionReadyStatusText(tier, staminaPlan, supplies){
   if(!staminaPlan.sufficient){
     if(!getAvailableExpeditionRations().length){
-      return 'Cook fish and pack rations in your bag or store room';
+      return 'Cook fish and pack available rations';
     }
     return 'Need '+(staminaPlan.required-staminaPlan.totalProvided)+' more stamina from rations';
   }
@@ -1194,7 +1194,7 @@ function renderExploreReqSubmenu(tier, staminaPlan){
       +'<span class="explore-req-submenu-meta">lowest stamina rations</span>'
       +'</button>';
     if(!species.length){
-      html+='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:6px 0 2px">No cooked fish in bag or store room.</div>';
+      html+='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:6px 0 2px">No cooked fish available.</div>';
     }else{
       html+=species.map(sp=>{
         const active=explore.focusFishId===sp.fishId?' active':'';

@@ -227,12 +227,34 @@ function renderFirePitMaterialGrid(materialKey, count){
 let firePitTab='cook';
 let firePitSelectedLog='logs';
 let firePitSelectedFurniture=null;
+let firePitUserPickedLog=false;
+let firePitUserPickedFurniture=false;
 let firePitLogPickerOpen=false;
 let firePitFurnPickerOpen=false;
 let firePitCookPickerOpen=false;
 
 function getFirePitActivitySkillKey(){
   return firePitTab==='cook'?'cooking':'fire';
+}
+
+function pickBestLogKeyForBurning(){
+  for(let i=LOG_TIER_ORDER.length-1;i>=0;i--){
+    const k=LOG_TIER_ORDER[i];
+    if(itemCountBagAndStore(k)>0) return k;
+  }
+  return null;
+}
+
+/** Consume one log and grant Fire affinity XP (+ standard shard roll via grantXP). */
+function burnLogForFireAffinity(logKey){
+  const key=logKey||pickBestLogKeyForBurning();
+  if(!key) return { ok:false, reason:'no_log' };
+  const logDef=LOG_TYPES[key]||LOG_DEFS[key]||LOG_DEFS.logs;
+  if(!consumeOneFromBagOrStore(key)) return { ok:false, reason:'consume_failed' };
+  const xp=firePitFireXpForLog(key);
+  grantXP('fire', xp, null);
+  flashSkillPill('fire');
+  return { ok:true, xp, logKey:key, logDef };
 }
 
 function setFirePitTab(tab){
@@ -243,6 +265,7 @@ function setFirePitTab(tab){
 }
 
 function syncFirePitLogSelection(){
+  if(firePitUserPickedLog) return;
   for(let i=LOG_TIER_ORDER.length-1;i>=0;i--){
     const k=LOG_TIER_ORDER[i];
     if(logTypeCount(k)>0){ firePitSelectedLog=k; return; }
@@ -252,7 +275,11 @@ function syncFirePitLogSelection(){
 
 function syncFirePitFurnitureSelection(){
   const owned=listBurnableFirePitFurniture();
-  if(!owned.length){ firePitSelectedFurniture=null; return; }
+  if(!owned.length){
+    if(!firePitUserPickedFurniture) firePitSelectedFurniture=null;
+    return;
+  }
+  if(firePitUserPickedFurniture) return;
   if(!firePitSelectedFurniture||!owned.some(f=>f.key===firePitSelectedFurniture)){
     firePitSelectedFurniture=owned[0].key;
   }
@@ -269,6 +296,7 @@ function toggleFirePitLogPicker(){
 
 function selectFirePitLog(key){
   firePitSelectedLog=key;
+  firePitUserPickedLog=true;
   firePitLogPickerOpen=false;
   renderFirePitScreen();
 }
@@ -280,6 +308,7 @@ function toggleFirePitFurnPicker(){
 
 function selectFirePitFurniture(key){
   firePitSelectedFurniture=key;
+  firePitUserPickedFurniture=true;
   firePitFurnPickerOpen=false;
   renderFirePitScreen();
 }
@@ -352,7 +381,7 @@ function renderFirePitLogsPanel(){
     el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<1?' unavail':'')+'" onclick="toggleFirePitLogPicker()">'
       +'<span class="wb-mat-icon">'+(logDef.icon||'🪵')+'</span>'
       +'<div class="wb-mat-pick-body">'
-      +'<span class="wb-mat-pick-avail '+wbStockClass(total)+'">'+(logDef.name||'Log')+' - '+total+' in stock</span>'
+      +'<span class="wb-mat-pick-avail '+wbStockClass(total)+'">'+(logDef.name||'Log')+' — '+formatAvailableCount(total)+'</span>'
       +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">+'+fireXp+' Fire XP</span>'
       +'</div><span class="wb-log-pick-chevron">▾</span></div>';
   }else{
@@ -367,7 +396,7 @@ function renderFirePitLogsPanel(){
       return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
         +'<span class="wb-mat-icon">'+(d.icon||'🪵')+'</span><span class="wb-mat-info">'
         +'<span class="wb-mat-name">'+d.name+'</span>'
-        +'<span class="wb-mat-stock '+wbStockClass(stock)+'">'+stock+' in stock • +'+logFireXp+' Fire XP</span>'
+        +'<span class="wb-mat-stock '+wbStockClass(stock)+'">'+formatAvailableCount(stock)+' • +'+logFireXp+' Fire XP</span>'
         +'</span></div>';
     }).join('');
   }
@@ -386,7 +415,7 @@ function renderFirePitFurniturePanel(){
   const def=key?getFurnitureDef(key):null;
   const total=key?itemCountBagAndStore(key):0;
   if(!owned.length){
-    el.innerHTML='<div class="store-line" style="color:rgba(200,169,110,0.45)">No crafted furniture in bag or store room.</div>';
+    el.innerHTML='<div class="store-line" style="color:rgba(200,169,110,0.45)">No crafted furniture available.</div>';
     if(xpEl) xpEl.innerHTML='';
     return;
   }
@@ -395,7 +424,7 @@ function renderFirePitFurniturePanel(){
     el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<1?' unavail':'')+'" onclick="toggleFirePitFurnPicker()">'
       +'<span class="wb-mat-icon">'+(def?.icon||'🪑')+'</span>'
       +'<div class="wb-mat-pick-body">'
-      +'<span class="wb-mat-pick-avail '+wbStockClass(total)+'">'+(def?.name||'Furniture')+' - '+total+' in stock</span>'
+      +'<span class="wb-mat-pick-avail '+wbStockClass(total)+'">'+(def?.name||'Furniture')+' — '+formatAvailableCount(total)+'</span>'
       +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">+'+fireXp+' Fire XP</span>'
       +'</div><span class="wb-log-pick-chevron">▾</span></div>';
   }else{
@@ -405,7 +434,7 @@ function renderFirePitFurniturePanel(){
       return '<div class="wb-mat-option'+selCls+'" onclick="selectFirePitFurniture(\''+f.key+'\')">'
         +'<span class="wb-mat-icon">'+f.icon+'</span><span class="wb-mat-info">'
         +'<span class="wb-mat-name">'+f.name+'</span>'
-        +'<span class="wb-mat-stock '+wbStockClass(f.count)+'">'+f.count+' in stock • +'+fireXp+' Fire XP</span>'
+        +'<span class="wb-mat-stock '+wbStockClass(f.count)+'">'+formatAvailableCount(f.count)+' • +'+fireXp+' Fire XP</span>'
         +'</span></div>';
     }).join('');
   }
@@ -437,7 +466,6 @@ function renderFirePitActivityButtons(){
       return;
     }
     const can=canCookRecipe(recipe);
-    const needSpace=!canStoreCookedResult(recipe)&&itemCountBagAndStore(recipe.rawKey)>0;
     renderOnceContinuousButtons({
       btnEl,
       running:false,
@@ -447,7 +475,7 @@ function renderFirePitActivityButtons(){
       continuousOnclick:'cookContinuous()',
       stopOnclick:'stopCooking()',
       stopLabel:'⛔ STOP COOKING',
-      noticeHtml:needSpace?'<div class="wb-cost-notice">Bag full — only burns possible until you make space.</div>':'',
+      noticeHtml:!can?('<div class="wb-cost-notice">'+(getCookBlockReason(recipe)||'Cannot cook right now.')+'</div>'):'',
     });
     return;
   }
@@ -485,28 +513,25 @@ function renderFirePitActivityButtons(){
 
 function burnLogOnFirePit(){
   stopOtherActivities(null);
-  syncFirePitLogSelection();
   const logKey=firePitSelectedLog||'logs';
-  const logDef=LOG_TYPES[logKey]||LOG_DEFS.logs;
-  if(logTypeCount(logKey)<1){
-    showToast('No '+((logDef.name||'log').toLowerCase())+'s in bag or store room.');
+  const logDef=LOG_TYPES[logKey]||LOG_DEFS[logKey]||LOG_DEFS.logs;
+  if(!logKey||itemCountBagAndStore(logKey)<1){
+    showToast('No '+((logDef?.name||'log').toLowerCase())+'s available.');
     return;
   }
-  if(!consumeOneFromBagOrStore(logKey)){
+  const result=burnLogForFireAffinity(logKey);
+  if(!result.ok){
     showToast('No wood available.');
     return;
   }
-  const xp=firePitFireXpForLog(logKey);
-  grantXP('fire', xp, null);
-  addActivityLog('firepit-log',(logDef.icon||'🪵')+' '+(logDef.name||'Log')+' burned. +'+xp+' Fire XP','success');
-  showToast('The log catches. +' + xp + ' Fire XP 🔥');
+  addActivityLog('firepit-log',(result.logDef.icon||'🪵')+' '+(result.logDef.name||'Log')+' burned. +'+result.xp+' Fire','success');
+  showToast('The log catches. +' + result.xp + ' Fire 🔥');
   renderFirePitScreen();
   syncUI();
 }
 
 function burnFurnitureOnFirePit(){
   stopOtherActivities(null);
-  syncFirePitFurnitureSelection();
   const key=firePitSelectedFurniture;
   const def=key?getFurnitureDef(key):null;
   if(!key||!def){
@@ -514,7 +539,7 @@ function burnFurnitureOnFirePit(){
     return;
   }
   if(itemCountBagAndStore(key)<1){
-    showToast('No '+def.name.toLowerCase()+' in bag or store room.');
+    showToast('No '+def.name.toLowerCase()+' available.');
     return;
   }
   if(!consumeOneFromBagOrStore(key)){
@@ -524,8 +549,9 @@ function burnFurnitureOnFirePit(){
   const xp=firePitFireXpForFurniture(key);
   const shards=grantGuaranteedFireShards(firePitShardsForFurniture(key));
   grantXP('fire', xp, null);
-  addActivityLog('firepit-log',def.icon+' '+def.name+' sacrificed to the flames. +'+xp+' Fire XP • +'+shards+' fire shard'+(shards===1?'':'s'),'success');
-  showToast(def.icon+' '+def.name+' burns bright. +'+xp+' Fire XP • +'+shards+' 🔥 shard'+(shards===1?'':'s'));
+  flashSkillPill('fire');
+  addActivityLog('firepit-log',def.icon+' '+def.name+' sacrificed to the flames. +'+xp+' Fire • +'+shards+' fire shard'+(shards===1?'':'s'),'success');
+  showToast(def.icon+' '+def.name+' burns bright. +'+xp+' Fire • +'+shards+' 🔥 shard'+(shards===1?'':'s'));
   renderFirePitScreen();
   syncUI();
 }
@@ -603,7 +629,7 @@ function renderFirePitScreen(){
   if(skillPill) skillPill.hidden=stage!=='complete';
   if(subEl){
     subEl.textContent=stage==='complete'
-      ?(firePitTab==='cook'?'Raw fish from bag or store room'
+      ?(firePitTab==='cook'?'Uses available raw fish'
         :firePitTab==='logs'?'Burn logs one at a time for Fire XP'
         :'Sacrifice furniture for Fire XP and shards')
       :'Lay stone, clay, and bricks to build the fire pit';

@@ -37,6 +37,7 @@ const SCREEN_SKILL_RESOLVERS={
   'fire-pit-screen':()=>typeof getFirePitActivitySkillKey==='function'?getFirePitActivitySkillKey():'cooking',
   'fireplace-screen':()=>'cooking',
   'spinningwheel-screen':()=>'tailoring',
+  'loom-screen':()=>'tailoring',
   'botany-table-screen':()=>typeof getApothecaryActivitySkillKey==='function'?getApothecaryActivitySkillKey():'botany',
   'pets-screen':()=>'husbandry',
 };
@@ -51,6 +52,7 @@ const SCREEN_SKILL_PREFIX={
   'fire-pit-screen':'firepit',
   'fireplace-screen':'fp',
   'spinningwheel-screen':'sw',
+  'loom-screen':'loom',
   'botany-table-screen':'botany',
   'pets-screen':'pets',
 };
@@ -92,12 +94,35 @@ function updateActivitySkillDisplays(){
   const showInt=currentScreen==='interior-screen'&&!!skillKey&&(
     (activity.type==='cooking'&&cook.running)||
     (activity.type==='spinning'&&spin.running)||
+    (activity.type==='loom'&&loomProcess.running)||
     (activity.type==='apothecary'&&apothProcess.running)
   );
   setContextSkillPillVisible(extPill, showExt);
   if(showExt) updateActivitySkillPill('ext', skillKey);
   setContextSkillPillVisible(intPill, showInt);
   if(showInt) updateActivitySkillPill('int', skillKey);
+}
+
+const INV_COUNT_PILL_IDS=[
+  'inv-count-ext','inv-count-int','inv-count-wb','inv-count-sk','inv-count-store',
+  'inv-count-fish','inv-count-gather','inv-count-wc','inv-count-mine','inv-count-explore',
+  'inv-count-fp','inv-count-sw','inv-count-loom','inv-count-botany','inv-count-pets','inv-count-well','inv-count-firepit',
+];
+
+function updateInvCountPills(){
+  const used=invTotal();
+  INV_COUNT_PILL_IDS.forEach(id=>{
+    const e=document.getElementById(id);
+    if(e) e.textContent=used;
+  });
+}
+
+function syncInventoryUI(){
+  updateInvCountPills();
+  if(openPanel==='inv'){
+    const stamp=getInvPanelRenderStamp();
+    if(stamp!==invPanelRenderStamp) renderInvPanel();
+  }
 }
 
 function syncUI(){
@@ -117,13 +142,13 @@ function syncUI(){
     delete state._storeRoomsOrphansRemoved;
     setTimeout(()=>showToast('🗄️ '+n+' store room'+(n===1?'':'s')+' had no space on the map — ghost capacity removed.'),600);
   }
-  const used=invTotal();
-  ['inv-count-ext','inv-count-int','inv-count-wb','inv-count-sk','inv-count-store','inv-count-fish','inv-count-gather','inv-count-wc','inv-count-mine','inv-count-explore','inv-count-fp','inv-count-sw','inv-count-botany','inv-count-pets','inv-count-well','inv-count-firepit'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=used;});
-  ['gold-ext','gold-int','gold-wb','gold-sk','gold-store','gold-fish','gold-gather','gold-wc','gold-mine','gold-explore','gold-fp','gold-sw','gold-botany','gold-pets','gold-well','gold-firepit'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=state.gold;});
+  syncInventoryUI();
+  ['gold-ext','gold-int','gold-wb','gold-sk','gold-store','gold-fish','gold-gather','gold-wc','gold-mine','gold-explore','gold-fp','gold-sw','gold-loom','gold-botany','gold-pets','gold-well','gold-firepit'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=state.gold;});
   document.querySelectorAll('.stat-pill-gold').forEach(el=>el.classList.toggle('visible',state.gold>0));
   document.querySelectorAll('.int-cell[data-int-key="fireplace"]').forEach(el=>el.classList.toggle('fireplace-cooking',cook.running));
   document.querySelectorAll('.int-cell[data-int-key="spinningwheel"]').forEach(el=>el.classList.toggle('spinning-wheel-active',spin.running));
   document.querySelectorAll('.int-cell[data-int-key="apothecary_table"]').forEach(el=>el.classList.toggle('apothecary-processing',apothProcess.running));
+  document.querySelectorAll('.int-cell[data-int-key="wonky_loom"]').forEach(el=>el.classList.toggle('wonky-loom-weaving',loomProcess.running));
   updatePondCell();
   updateGatherCells();
   updateQuarryCells();
@@ -131,15 +156,12 @@ function syncUI(){
   if(typeof updateFirePitCellQuickAction==='function') updateFirePitCellQuickAction();
   updateSpinningWheelCell();
   if(typeof updateApothecaryCellQuickAction==='function') updateApothecaryCellQuickAction();
+  if(typeof updateLoomCellQuickAction==='function') updateLoomCellQuickAction();
   updateDogbedCell();
   if(currentScreen==='pets-screen') renderPetsScreen(viewingPetId);
   if(currentScreen==='exploring-screen') renderExploring();
   if(currentScreen==='skills-screen'&&viewingSkillKey) renderSkillDetail(viewingSkillKey);
   updateActivitySkillDisplays();
-  if(openPanel==='inv'){
-    const stamp=getInvPanelRenderStamp();
-    if(stamp!==invPanelRenderStamp) renderInvPanel();
-  }
   const eqLabel = state.equipped ? state.equipped.icon : '—';
   ['equip-val-ext','equip-val-int','equip-val-wb'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=eqLabel;});
   Object.keys(state.skills).forEach(key=>{
@@ -148,7 +170,7 @@ function syncUI(){
     const lvl=document.getElementById('sk-lvl-'+key);
     const txt=document.getElementById('sk-txt-'+key);
     if(bar)bar.style.width=pct+'%';
-    if(lvl)lvl.textContent='Lv '+s.level;
+    if(lvl)lvl.textContent='Lvl '+s.level;
     if(txt)txt.textContent=s.xp+' / '+s.xpToNext+' xp';
   });
   updateSaveButtonUI();

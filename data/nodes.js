@@ -152,7 +152,9 @@ const GATHERING_LOCATIONS=[
     shardTypes:['earth'],
     drops:[
       {key:'brick',icon:'🧱',name:'Brick',weight:35},
-      {key:'copper_ore',icon:'🟤',name:'Copper Ore',weight:30},
+      {key:'copper_ore',icon:'🟤',name:'Copper Ore',weight:24},
+      {key:'bones',icon:'🦴',name:'Bones',weight:5},
+      {key:'large_bone',icon:'🦴',name:'Large Bone',weight:1},
       {key:'artefact_basic',icon:'🏺',name:'Basic Artefact',weight:18},
       {key:'quartz',icon:'💎',name:'Quartz',weight:8,rare:true},
       {key:'artefact_rare',icon:'🗿',name:'Rare Artefact',weight:5,rare:true},

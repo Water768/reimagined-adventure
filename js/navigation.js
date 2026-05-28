@@ -4,14 +4,15 @@
 /* ═══════════════════════════════════════
    NAVIGATION
 ═══════════════════════════════════════ */
-const ALL_SCREENS=['intro-screen','exterior-screen','interior-screen','skills-screen','workbench-screen','storeroom-screen','fishing-screen','gathering-screen','woodcutting-screen','mining-screen','exploring-screen','fireplace-screen','spinningwheel-screen','botany-table-screen','pets-screen','well-screen','fire-pit-screen'];
-const HUT_OVERLAY_SCREENS=new Set(['workbench-screen','storeroom-screen','fireplace-screen','spinningwheel-screen','botany-table-screen','pets-screen']);
+const ALL_SCREENS=['intro-screen','exterior-screen','interior-screen','skills-screen','workbench-screen','storeroom-screen','fishing-screen','gathering-screen','woodcutting-screen','mining-screen','exploring-screen','fireplace-screen','spinningwheel-screen','loom-screen','botany-table-screen','pets-screen','well-screen','fire-pit-screen'];
+const HUT_OVERLAY_SCREENS=new Set(['workbench-screen','storeroom-screen','fireplace-screen','spinningwheel-screen','loom-screen','botany-table-screen','pets-screen']);
 const WORLD_OVERLAY_SCREENS=new Set(['fishing-screen','gathering-screen','woodcutting-screen','mining-screen','exploring-screen','well-screen','fire-pit-screen']);
 const OVERLAY_CLOSE_FN={
   'workbench-screen':()=>{ if(typeof closeWorkbench==='function') closeWorkbench(); },
   'storeroom-screen':()=>{ if(typeof closeStoreRoom==='function') closeStoreRoom(); },
   'fireplace-screen':()=>{ if(typeof closeFireplaceScreen==='function') closeFireplaceScreen(); },
   'spinningwheel-screen':()=>{ if(typeof closeSpinningWheelScreen==='function') closeSpinningWheelScreen(); },
+  'loom-screen':()=>{ if(typeof closeLoomScreen==='function') closeLoomScreen(); },
   'botany-table-screen':()=>{ if(typeof closeBotanyTableScreen==='function') closeBotanyTableScreen(); },
   'pets-screen':()=>{ if(typeof closePetsScreen==='function') closePetsScreen(); },
   'fishing-screen':()=>{ if(typeof closeFishing==='function') closeFishing(); },
@@ -121,6 +122,7 @@ function enterHut(){
   reconcileActivityState();
   if(!cook.running) clearActivity('cooking');
   if(!spin.running) clearActivity('spinning');
+  if(!loomProcess.running) clearActivity('loom');
   showScreen('interior-screen'); lastHome='interior-screen';
   interiorNeedsHomeCenter=true;
   requestAnimationFrame(()=>{
@@ -187,7 +189,7 @@ function skillRowHtml(key){
     +'<div class="skill-row-body">'
     +'<div class="skill-row-top">'
     +'<span class="skill-row-name">'+m.name.toUpperCase()+'</span>'
-    +'<span class="skill-row-level" id="sk-lvl-'+key+'">Lv 1</span>'
+    +'<span class="skill-row-level" id="sk-lvl-'+key+'">Lvl 1</span>'
     +'</div>'
     +'<div class="skill-row-bar"><div class="skill-row-fill sk-'+key+'" id="sk-bar-'+key+'" style="width:0%"></div></div>'
     +'<span class="skill-row-xp" id="sk-txt-'+key+'">'+xpTxt+'</span>'
@@ -263,7 +265,7 @@ function renderSkillDetail(key){
   const m=SKILL_META[key];
   if(!panel||!s||!m){ closeSkillDetail(); return; }
   const pct=Math.min((s.xp/s.xpToNext)*100,100);
-  const lvlLabel='Lv '+s.level;
+  const lvlLabel='Lvl '+s.level;
   const totalXp=formatSkillXp(getTotalSkillXp(key));
   const note=m.blurb||('Train '+m.name.toLowerCase()+' through activities across Hearthstead.');
   panel.innerHTML=

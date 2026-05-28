@@ -64,6 +64,7 @@ function createTimedActivity(config){
       return;
     }
     if(onRefresh) onRefresh();
+    syncInventoryUI();
     actState.timer=setTimeout(runNext, tickMs);
   }
 
@@ -146,5 +147,5 @@ function renderRecipePickerCollapsed(opts){
 }
 
 function isTimedActivityActive(){
-  return cook.running||spin.running||apothProcess.running||craft.running;
+  return cook.running||spin.running||loomProcess.running||apothProcess.running||craft.running;
 }

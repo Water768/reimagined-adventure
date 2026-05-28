@@ -229,6 +229,7 @@ function formatMineDrops(mineId){
 
 function plotAddLevelBadge(skillKey, currentLvl, requiredLvl, recommendedLvl){
   const rec=recommendedLvl??requiredLvl;
+  if(currentLvl>=requiredLvl&&currentLvl>=rec) return '';
   let cls='ok';
   if(currentLvl<requiredLvl) cls='low';
   else if(currentLvl<rec) cls='low';

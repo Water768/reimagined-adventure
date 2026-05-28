@@ -10,7 +10,7 @@ const INT_CELL_PX = 92;
 const INT_WALL_PX = 10;
 const INT_DRAG_ICON = {
   wardrobe:'🚪', fireplace:'🔥', picture:'🖼️', workbench:'🪚',
-  build:'＋', dogbed:'🛏️', doorway:'🚶', storeroom:'🗄️', spinningwheel:'🎡', apothecary_table:'⚗️', empty:'',
+  build:'＋', dogbed:'🛏️', doorway:'🚶', storeroom:'🗄️', spinningwheel:'🎡', apothecary_table:'⚗️', wonky_loom:'🧵', empty:'',
 };
 let intPanDrag = null;
 let intSwapDrag = null;
@@ -332,6 +332,7 @@ function migrateInterior(){
   if(state.interior.cells&&Object.keys(state.interior.cells).length){
     migrateInteriorBuildSlots();
     if(typeof migrateApothecaryTable==='function') migrateApothecaryTable();
+    if(typeof migrateFabricItems==='function') migrateFabricItems();
     if(!isInteriorConnected(state.interior.cells)){
       const {doorwayKey, roomKeys}=collectInteriorRoomKeys();
       state.interior.cells=buildInteriorStackLayout(roomKeys, doorwayKey);
@@ -426,9 +427,32 @@ function toggleInteriorBuildMode(){
 
 function updateInteriorBuildUI(){
   const btn=document.getElementById('interior-build-btn');
+  const roomsBtn=document.getElementById('interior-rooms-btn');
   const screen=document.getElementById('interior-screen');
-  if(btn) btn.textContent=state.interior?.buildMode?'✓ Done building':'🏗️ Building mode';
-  screen?.classList.toggle('interior-build-mode',!!state.interior?.buildMode);
+  const inBuild=!!state.interior?.buildMode;
+  if(btn) btn.textContent=inBuild?'✓ Done building':'🏗️ Building mode';
+  if(roomsBtn){
+    const count=getInteriorRoomCount();
+    const max=getMaxInteriorRooms();
+    roomsBtn.textContent=count+'/'+max+' rooms built';
+    if(inBuild){
+      roomsBtn.hidden=false;
+      roomsBtn.classList.add('visible');
+    }else{
+      roomsBtn.classList.remove('visible');
+      roomsBtn.hidden=true;
+    }
+  }
+  screen?.classList.toggle('interior-build-mode',inBuild);
+}
+
+function showInteriorRoomCountInfo(){
+  migrateInterior();
+  const count=getInteriorRoomCount();
+  const max=getMaxInteriorRooms();
+  const lv=getArchitectureLevel();
+  const nextUnlock=getNextArchitectureRoomUnlock();
+  showToast(count+'/'+max+' rooms built · Architecture Lv '+lv+'. Next room unlocked at level '+nextUnlock+'.');
 }
 
 function previewRemoveInteriorRoom(x,y){
@@ -561,7 +585,7 @@ function confirmRemoveInteriorRoom(x,y,e){
     showChoiceBanner(
       'Pick up furniture?',
       fdef?.icon||'🪑',
-      'Remove '+(fdef?.name||'this item')+' from the floor? It returns to your bag or store room. The room stays.',
+      'Remove '+(fdef?.name||'this item')+' from the floor? It returns to your supplies. The room stays.',
       'Pick it up',
       'Leave it',
       ()=>setTimeout(()=>removeInteriorFurniture(x,y),0)
@@ -727,6 +751,18 @@ function removeInteriorRoom(x,y, opts){
     if(where==='bag') showToast('⚗️ Apothecary Table picked up.');
     else if(where==='store') showToast('⚗️ Apothecary Table returned to store room (bag full).');
     else showToast('Apothecary Table removed.');
+    return;
+  }
+
+  if(type==='wonky_loom'){
+    state.interior.cells=next;
+    const fdef=getFurnitureDef(WONKY_LOOM_FURNITURE_KEY);
+    const where=returnOneToBagOrStore(WONKY_LOOM_FURNITURE_KEY, fdef?.icon||'🧵', fdef?.name||'Wonky Loom');
+    renderInteriorGrid();
+    syncUI();
+    if(where==='bag') showToast('🧵 Wonky Loom picked up.');
+    else if(where==='store') showToast('🧵 Wonky Loom returned to store room (bag full).');
+    else showToast('Wonky Loom removed.');
     return;
   }
 
@@ -1215,6 +1251,13 @@ function refreshInteriorCell(cellKey, el, x, y){
     return;
   }
 
+  if(type==='wonky_loom'){
+    renderWonkyLoomCellContent(el);
+    const rm=interiorRemoveBtnHtml(x,y);
+    if(rm) el.insertAdjacentHTML('afterbegin', rm);
+    return;
+  }
+
   if(type==='picture'){
     el.dataset.intKey='picture';
     el.innerHTML=interiorRemoveBtnHtml(x,y)+'<div class="int-item" style="transform:rotate(-8deg);display:inline-block">🖼️</div><div class="int-label">picture</div>';
@@ -1423,6 +1466,7 @@ function handleInteriorCellTap(key, cell, event){
 function onInteriorViewportPointerDown(e){
   if(e.button!==undefined&&e.button!==0) return;
   if(e.target.closest('#interior-home-btn')) return;
+  if(e.target.closest('#interior-rooms-btn')) return;
   if(e.target.closest('#interior-build-btn')) return;
   if(e.target.closest('#interior-reset-btn')) return;
   if(e.target.closest('.int-empty-remove')) return;

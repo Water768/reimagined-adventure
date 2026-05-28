@@ -77,7 +77,9 @@ function getEquippedStorageFetchPet(){
 function splitInventoryByDogFetch(n){
   const fetchPet=getEquippedStorageFetchPet();
   if(!fetchPet||n<=0) return { toStorage:0, toBag:n, pet:null };
-  const chance=getPetSpeciesDef(fetchPet.type).passiveChance??DOG_STORAGE_FETCH_CHANCE;
+  const chance=typeof getPetDogFetchChance==='function'
+    ?getPetDogFetchChance(fetchPet)
+    :(getPetSpeciesDef(fetchPet.type).passiveChance??DOG_STORAGE_FETCH_CHANCE);
   let toStorage=0;
   for(let i=0;i<n;i++){
     if(Math.random()<chance) toStorage++;
@@ -92,6 +94,7 @@ function notifyDogStorageFetch(pet, icon, count){
 
 function invAdd(key,icon,name,n){
   if(n<=0) return 0;
+  const before=invTotal();
   const split=splitInventoryByDogFetch(n);
   if(split.toStorage>0){
     storageAddDirect(key,icon,name,split.toStorage);
@@ -103,12 +106,14 @@ function invAdd(key,icon,name,n){
   const add=Math.min(split.toBag,space);
   if(!state.inventory[key]) state.inventory[key]={icon,name,count:0};
   state.inventory[key].count+=add;
-  if(add>0) flashInvPickup(icon, add);
+  const net=invTotal()-before;
+  if(net>0) flashInvPickup(icon, net);
   return split.toStorage+add;
 }
 
 function invAddDirect(key,icon,name,n){
   if(n<=0) return 0;
+  const before=invTotal();
   const split=splitInventoryByDogFetch(n);
   if(split.toStorage>0){
     storageAddDirect(key,icon,name,split.toStorage);
@@ -117,7 +122,8 @@ function invAddDirect(key,icon,name,n){
   if(split.toBag<=0) return split.toStorage;
   if(!state.inventory[key]) state.inventory[key]={icon,name,count:0};
   state.inventory[key].count+=split.toBag;
-  if(split.toBag>0) flashInvPickup(icon, split.toBag);
+  const net=invTotal()-before;
+  if(net>0) flashInvPickup(icon, net);
   return split.toStorage+split.toBag;
 }
 function migrateItemKeys(){
@@ -176,10 +182,23 @@ function itemCountBagAndStore(key, opts){
   return (state.inventory[key]?.count||0) + (state.storage[key]?.count||0);
 }
 
+function formatAvailableCount(count, infinite){
+  if(infinite||count===Infinity) return '∞ available';
+  return count+' available';
+}
+
 function nailCount(key){
   const t=typeof NAIL_TYPES!=='undefined'?NAIL_TYPES[key]:null;
   if(t?.infinite) return Infinity;
   return itemCountBagAndStore(key);
+}
+
+function grantNailToStorage(nailKey){
+  const def=typeof NAIL_TYPES!=='undefined'?NAIL_TYPES[nailKey]:null;
+  if(!def||def.infinite) return false;
+  if(!state.storage[nailKey]) state.storage[nailKey]={ icon:def.icon, name:def.name, count:0 };
+  state.storage[nailKey].count++;
+  return true;
 }
 
 function consumeOneFromBagOrStore(key){
@@ -240,6 +259,10 @@ function apothecaryTableInStock(){
   return itemCountBagAndStore(APOTHECARY_FURNITURE_KEY)>0;
 }
 
+function wonkyLoomInStock(){
+  return itemCountBagAndStore(WONKY_LOOM_FURNITURE_KEY)>0;
+}
+
 function returnOneToBagOrStore(key, icon, name){
   if(invTotal()<INV_CAP){
     invAddDirect(key, icon, name, 1);
@@ -284,6 +307,11 @@ function migratePets(){
     if(!p.type) p.type='cat';
     if(!p.birthday) p.birthday=Date.now();
     if(p.activeTimeMs==null) p.activeTimeMs=0;
+    if(!p.tier||p.tier<1) p.tier=getPetSpeciesTier(getPetSpeciesDef(p.type));
+    if(!p.level||p.level<1) p.level=1;
+    if(p.exp==null||p.exp<0) p.exp=0;
+    if(p.level>PET_MAX_LEVEL) p.level=PET_MAX_LEVEL;
+    clampPetExp(p);
   });
   state.equippedPetIds=state.equippedPetIds.filter(id=>state.pets.some(p=>p.id===id)).slice(0,MAX_EQUIPPED_PETS);
   state.equippedPetIds.forEach(id=>{
@@ -321,8 +349,10 @@ function formatDuration(ms){
 
 function formatPetBirthday(ts){
   const d=new Date(ts);
-  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return months[d.getMonth()]+' '+d.getDate();
+  const day=String(d.getDate()).padStart(2,'0');
+  const month=String(d.getMonth()+1).padStart(2,'0');
+  const year=String(d.getFullYear()).slice(-2);
+  return day+'/'+month+'/'+year;
 }
 
 function rollPetShard(){
@@ -337,8 +367,10 @@ function createPet(type){
     id:def.key+'_'+now+'_'+Math.floor(Math.random()*9999),
     type:def.key,
     name:names[Math.floor(Math.random()*names.length)],
+    tier:getPetSpeciesTier(def),
     shard:def.passiveType==='shard'?rollPetShard():null,
     level:1,
+    exp:0,
     birthday:now,
     activeTimeMs:0,
     equippedSince:null,
@@ -359,12 +391,31 @@ function canCookAnyRaw(){
 
 function canCookRecipe(recipe){
   return (Number(state.skills.cooking?.level)||1)>=(recipe.unlockLevel||1)
-    && itemCountBagAndStore(recipe.rawKey)>0;
+    && itemCountBagAndStore(recipe.rawKey)>0
+    && canStoreCookedResult(recipe);
+}
+
+function getCookBlockReason(recipe){
+  if(!recipe) return 'No recipe selected.';
+  if((Number(state.skills.cooking?.level)||1)<(recipe.unlockLevel||1)){
+    return 'Need Cooking Lv '+(recipe.unlockLevel||1)+'.';
+  }
+  if(itemCountBagAndStore(recipe.rawKey)<=0) return 'No raw food to cook.';
+  if(!canStoreCookedResult(recipe)) return 'Bag full — keep raw fish in your bag or make space.';
+  return null;
 }
 
 function canStoreCookedResult(recipe){
   if((state.inventory[recipe.rawKey]?.count||0)>0) return true;
   return invTotal()<INV_CAP;
+}
+
+/** Take one raw ingredient for cooking — bag first; storage only if bag has room for the result. */
+function consumeRawForCook(recipe){
+  const key=recipe.rawKey;
+  if((state.inventory[key]?.count||0)>0) return consumeOneFromBagOrStore(key);
+  if(invTotal()>=INV_CAP) return false;
+  return consumeOneFromBagOrStore(key);
 }
 
 function calcSpinSuccess(recipe){
@@ -452,6 +503,7 @@ const plotActivityMenuTimers={};
 const cook={ running:false, timer:null, recipeKey:'goldfish' };
 const spin={ running:false, timer:null, recipeKey:'twisted_grass' };
 const apothProcess={ running:false, timer:null };
+const loomProcess={ running:false, timer:null };
 const activity={ type:null };
 let skillFlashKey=null;
 let skillFlashTimer=null;
@@ -478,7 +530,7 @@ function flashSkillPill(skillKey){
 function activityLabel(type){
   const r=getActivityRunner(type);
   if(r?.label) return r.label;
-  return type==='fishing'?'Fishing':type==='gathering'?'Gathering':type==='woodcutting'?'Woodcutting':type==='mining'?'Mining':type==='crafting'?'Workbench':type==='cooking'?'Cooking':type==='spinning'?'Spinning':type==='apothecary'?'Processing':type==='exploring'?'Exploring':'';
+  return type==='fishing'?'Fishing':type==='gathering'?'Gathering':type==='woodcutting'?'Woodcutting':type==='mining'?'Mining':type==='crafting'?'Workbench':type==='cooking'?'Cooking':type==='spinning'?'Spinning':type==='loom'?'Weaving':type==='apothecary'?'Processing':type==='exploring'?'Exploring':'';
 }
 
 const ACTIVITY_SKILL_KEYS={
@@ -488,6 +540,7 @@ const ACTIVITY_SKILL_KEYS={
   mining:'mining',
   cooking:'cooking',
   spinning:'tailoring',
+  loom:'tailoring',
   apothecary:'botany',
   exploring:'exploration',
   crafting:'carpentry',

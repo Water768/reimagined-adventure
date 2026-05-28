@@ -5,7 +5,7 @@ const EXPLORATION_LAYER_FIRST_LEVEL=5;
 const EXPLORATION_LAYER_STEP=10;
 
 const EXPEDITION_REQ_SLOTS={
-  rations:{key:'rations',label:'Rations',icon:'🐟',desc:'Cooked fish from bag or store room'},
+  rations:{key:'rations',label:'Rations',icon:'🐟',desc:'Uses available cooked fish'},
   medicine:{key:'medicine',label:'Medicine',icon:'💊',desc:'Healing supplies',submenuTitle:'Healing potential'},
   torch:{key:'torch',label:'Torch',icon:'🔥',desc:'Flaming torch',submenuTitle:'Flame quality'},
 };

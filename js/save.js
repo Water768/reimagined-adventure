@@ -73,6 +73,7 @@ function runAllSaveMigrations(){
     migrateInteriorPan();
     migrateShelfTiers();
     if(typeof migrateApothecaryProcessKey==='function') migrateApothecaryProcessKey();
+    if(typeof migrateFabricItems==='function') migrateFabricItems();
   }catch(err){
     console.error('[Hearthstead] Save migration failed:', err);
   }

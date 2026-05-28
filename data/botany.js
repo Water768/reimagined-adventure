@@ -9,8 +9,6 @@ const BOTANY_ITEMS={
   mint:{ key:'mint', icon:'🍃', name:'Mint' },
   sage:{ key:'sage', icon:'🌾', name:'Sage' },
   aloe_gel:{ key:'aloe_gel', icon:'🧴', name:'Aloe Gel' },
-  linen:{ key:'linen', icon:'🪡', name:'Linen', unobtainable:true },
-  bandage:{ key:'bandage', icon:'🩹', name:'Bandage' },
 };
 
 const IDENTIFIED_HERB_KEYS=['aloe','mint','sage'];
@@ -20,7 +18,7 @@ const BOTANY_IDENTIFY_XP=8;
 const BOTANY_CRUSH_EARTH_SHARD_CHANCE=0.05;
 
 const BOTANY_APOTHECARY_SECTIONS=[
-  { label:'PROCESS', keys:['aloe_gel','bandage'] },
+  { label:'PROCESS', keys:['aloe_gel','soothing_bandage','improved_soothing_bandage'] },
   { label:'CRUSH HERB', keys:['crush_herb'] },
 ];
 
@@ -34,14 +32,23 @@ const BOTANY_APOTHECARY_RECIPES={
     requiredBotanyLevel:2,
     xp:12,
   },
-  bandage:{
-    id:'bandage', kind:'process',
-    label:'Bandage',
+  soothing_bandage:{
+    id:'soothing_bandage', kind:'process',
+    label:'Soothing Bandage',
     icon:'🩹',
-    outputKey:'bandage',
-    inputs:[{ key:'aloe_gel', qty:1 }, { key:'linen', qty:1 }],
+    outputKey:'soothing_bandage',
+    inputs:[{ key:'bandage', qty:1 }, { key:'aloe_gel', qty:1 }],
     requiredBotanyLevel:3,
     xp:18,
+  },
+  improved_soothing_bandage:{
+    id:'improved_soothing_bandage', kind:'process',
+    label:'Improved Soothing Bandage',
+    icon:'🩹',
+    outputKey:'improved_soothing_bandage',
+    inputs:[{ key:'linen', qty:1 }, { key:'aloe_gel', qty:1 }],
+    requiredBotanyLevel:4,
+    xp:24,
   },
   crush_herb:{
     id:'crush_herb', kind:'crush',
@@ -63,7 +70,9 @@ function getHerbDef(key){
 }
 
 function getBotanyItemDef(key){
-  return BOTANY_ITEMS[key]||null;
+  if(BOTANY_ITEMS[key]) return BOTANY_ITEMS[key];
+  if(typeof getFabricItemDef==='function') return getFabricItemDef(key);
+  return null;
 }
 
 function isCrushApothecaryRecipe(recipe){
@@ -85,6 +94,14 @@ function rollIdentifiedHerbKey(){
 
 function botanyRecipeInputsSummary(recipe){
   return recipe.inputs.map(inp=>{
+    if(isAnyOfBotanyInput(inp)){
+      const names=inp.anyOf.map(key=>{
+        const def=getBotanyItemDef(key);
+        return (def?.icon||'?')+' '+(def?.name||key);
+      }).join(' or ');
+      const qty=inp.qty>1?' ×'+inp.qty:'';
+      return names+qty;
+    }
     const def=getBotanyItemDef(inp.key);
     const icon=def?.icon||'?';
     const name=def?.name||inp.key;

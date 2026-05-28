@@ -12,12 +12,12 @@ const html = fs.readFileSync(path.join(ROOT, 'Game - Draft 1.html'), 'utf8');
 const DATA_ORDER = [
   'plot-layout.js', 'resources.js', 'nodes.js', 'structures.js', 'well.js', 'fire-pit.js',
   'interior.js', 'skills.js', 'equipment.js', 'fish.js', 'exploration.js', 'crafting.js',
-  'water.js', 'furniture.js', 'botany.js', 'pets.js',
+  'water.js', 'furniture.js', 'botany.js', 'loom.js', 'pets.js',
 ];
 const JS_ORDER = [
   'constants.js', 'data-init.js', 'state.js', 'activity-engine.js', 'navigation.js', 'panels.js',
   'sync-ui.js', 'plot.js', 'interior-grid.js', 'activities.js', 'well.js', 'fire-pit.js',
-  'interactions.js', 'botany-table.js', 'workbench.js', 'ui.js', 'save.js', 'bootstrap.js',
+  'interactions.js', 'botany-table.js', 'loom.js', 'workbench.js', 'ui.js', 'save.js', 'bootstrap.js',
 ];
 
 const LOAD_ORDER = [

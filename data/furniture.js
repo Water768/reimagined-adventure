@@ -14,11 +14,22 @@ const WOOD_ALLOW={
 };
 
 const FURNITURE_TIERS={
-  simple:{ label:'Simple', order:1 },
-  hardwood:{ label:'Hardwood', order:2 },
-  artisan:{ label:'Artisan', order:3 },
-  mythical:{ label:'Mythical', order:4 },
+  simple:{ label:'Simple', order:1, code:'S' },
+  hardwood:{ label:'Hardwood', order:2, code:'H' },
+  artisan:{ label:'Artisan', order:3, code:'A' },
+  mythical:{ label:'Mythical', order:4, code:'M' },
 };
+
+/** Logs shown in UI / log picker per furniture tier. */
+const FURNITURE_TIER_WOODS={
+  simple:['logs','ashwood','teak'],
+  hardwood:['teak','yew','ebonwood','silverbirch','ironbark'],
+  artisan:['ebonwood','ironbark','yew'],
+  mythical:['singing_oak'],
+};
+
+/** Singing Oak works on any tier but only appears in lists for Mythical. */
+const FURNITURE_BONUS_WOOD='singing_oak';
 
 const FURNITURE_CRAFTS={
   // ── Simple tier ──
@@ -45,6 +56,14 @@ const FURNITURE_CRAFTS={
     description:'A sturdy flat surface for meals and work.',
     furnitureKey:'table', skill:'carpentry',
     nailsPerAttempt:10, xpFail:2, xpStage:14, xpComplete:55, completeLabel:'table',
+  },
+  wonky_loom:{
+    id:'wonky_loom', name:'Wonky Loom', icon:'🧵', tier:'simple',
+    requiredCarpentryLevel:10, stages:5, baseFurnitureChance:48,
+    allowedWoods:'all',
+    description:'A wobbly frame that somehow turns thread into fabric — just not very well.',
+    furnitureKey:'wonky_loom', skill:'carpentry', utility:true, makesFabric:true,
+    nailsPerAttempt:10, xpFail:2, xpStage:14, xpComplete:58, completeLabel:'wonky loom',
   },
   apothecary_table:{
     id:'apothecary_table', name:'Apothecary Table', icon:'⚗️', tier:'simple',
@@ -146,6 +165,18 @@ const SHELF_RECIPES={
   },
 };
 
+const NAIL_TIER_ORDER = ['iron', 'copper', 'forged', 'ironbark', 'gilded'];
+const NAIL_PICKER_ORDER = ['rusty', ...NAIL_TIER_ORDER];
+/** On failed attempt: 50% chance one nail is discarded. On success: 1–5 nails used. */
+const NAIL_FAIL_DISCARD_CHANCE = 0.5;
+const NAIL_SUCCESS_USE_MIN = 1;
+const NAIL_SUCCESS_USE_MAX = 5;
+
 const NAIL_TYPES = {
   rusty: { key:'rusty', icon:'📌', name:'Rusty Nails', bonus:0, infinite:true },
+  iron: { key:'iron', icon:'🔩', name:'Iron Nails', bonus:0.05, infinite:false },
+  copper: { key:'copper', icon:'🔩', name:'Copper Nails', bonus:0.10, infinite:false },
+  forged: { key:'forged', icon:'🔩', name:'Forged Nails', bonus:0.15, infinite:false },
+  ironbark: { key:'ironbark', icon:'🔩', name:'Ironbark Nails', bonus:0.20, infinite:false },
+  gilded: { key:'gilded', icon:'✨', name:'Gilded Nails', bonus:0.25, infinite:false },
 };

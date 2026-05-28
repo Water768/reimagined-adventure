@@ -224,6 +224,7 @@ body {
   pointer-events: none;
 }
 #interior-screen.under-overlay .interior-build-bar,
+#interior-screen.under-overlay .interior-top-actions,
 #interior-screen.under-overlay .plot-home-btn,
 #exterior-screen.under-overlay .plot-edit-bar,
 #exterior-screen.under-overlay .plot-home-btn {
@@ -677,6 +678,33 @@ body {
 }
 .plot-home-btn.visible { opacity:1; pointer-events:auto; transform:translateY(0); }
 .plot-home-btn:active { filter:brightness(1.12); }
+.interior-top-actions {
+  position:absolute; top:calc(var(--chrome-h) + 10px); left:0; right:0; z-index:14;
+  pointer-events:none;
+}
+.interior-top-actions .plot-home-btn {
+  position:absolute; top:0; pointer-events:auto;
+}
+#interior-rooms-btn {
+  left:50%;
+  right:auto;
+  transform:translateX(-50%) translateY(-6px);
+}
+#interior-rooms-btn.visible {
+  opacity:1; pointer-events:auto;
+  transform:translateX(-50%) translateY(0);
+}
+#interior-home-btn {
+  right:12px;
+  transform:translateY(-6px);
+}
+#interior-home-btn.visible {
+  opacity:1; pointer-events:auto;
+  transform:translateY(0);
+}
+#interior-home-btn:not(.visible) {
+  display:none;
+}
 .save-game-btn {
   position:absolute; top:calc(var(--chrome-h) + 10px); left:12px; z-index:120;
   font-family:var(--font-ui); font-size:12px; font-weight:600; letter-spacing:0.04em;
@@ -738,24 +766,29 @@ body {
 .int-cell[data-int-key="spinningwheel"]:not(.plot-activity-menu-ready) .plot-activity-top,
 .int-cell[data-int-key="spinningwheel"]:not(.plot-activity-menu-ready) .plot-activity-menu-zone,
 .int-cell[data-int-key="apothecary_table"]:not(.plot-activity-menu-ready) .plot-activity-top,
-.int-cell[data-int-key="apothecary_table"]:not(.plot-activity-menu-ready) .plot-activity-menu-zone {
+.int-cell[data-int-key="apothecary_table"]:not(.plot-activity-menu-ready) .plot-activity-menu-zone,
+.int-cell[data-int-key="wonky_loom"]:not(.plot-activity-menu-ready) .plot-activity-top,
+.int-cell[data-int-key="wonky_loom"]:not(.plot-activity-menu-ready) .plot-activity-menu-zone {
   display:none;
 }
 .int-cell[data-int-key="storeroom"].plot-activity-menu-ready .store-room-idle,
 .int-cell[data-int-key="fireplace"].plot-activity-menu-ready .fireplace-idle,
 .int-cell[data-int-key="spinningwheel"].plot-activity-menu-ready .spinningwheel-idle,
-.int-cell[data-int-key="apothecary_table"].plot-activity-menu-ready .apothecary-idle {
+.int-cell[data-int-key="apothecary_table"].plot-activity-menu-ready .apothecary-idle,
+.int-cell[data-int-key="wonky_loom"].plot-activity-menu-ready .wonky-loom-idle {
   display:none;
 }
 .int-cell[data-int-key="storeroom"],
 .int-cell[data-int-key="fireplace"],
 .int-cell[data-int-key="spinningwheel"],
 .int-cell[data-int-key="apothecary_table"],
+.int-cell[data-int-key="wonky_loom"],
 .int-cell[data-int-key="dogbed"] { overflow:hidden; cursor:pointer; }
 .int-cell[data-int-key="storeroom"] .plot-menu-btn,
 .int-cell[data-int-key="fireplace"] .plot-menu-btn,
 .int-cell[data-int-key="spinningwheel"] .plot-menu-btn,
 .int-cell[data-int-key="apothecary_table"] .plot-menu-btn,
+.int-cell[data-int-key="wonky_loom"] .plot-menu-btn,
 .int-cell[data-int-key="dogbed"] .plot-menu-btn {
   background:rgba(22, 14, 48, 0.92);
   color:rgba(220, 210, 240, 0.92);
@@ -764,6 +797,7 @@ body {
 .int-cell[data-int-key="fireplace"] .plot-menu-btn:active,
 .int-cell[data-int-key="spinningwheel"] .plot-menu-btn:active,
 .int-cell[data-int-key="apothecary_table"] .plot-menu-btn:active,
+.int-cell[data-int-key="wonky_loom"] .plot-menu-btn:active,
 .int-cell[data-int-key="dogbed"] .plot-menu-btn:active { background:rgba(112,48,200,0.28); }
 .int-quick-action-btn {
   width:100%; height:100%; border:none; padding:0 8px; margin:0;
@@ -1683,6 +1717,7 @@ body {
 @keyframes fpGlow { 0%,100%{filter:drop-shadow(0 0 6px rgba(255,100,30,0.6))} 50%{filter:drop-shadow(0 0 12px rgba(255,160,60,1))} }
 .int-cell.spinning-wheel-active .spinningwheel-idle .int-item { filter:drop-shadow(0 0 8px rgba(192,112,144,0.9)); animation:swGlow 1.2s ease-in-out infinite; }
 .int-cell.apothecary-processing .apothecary-idle .int-item { filter:drop-shadow(0 0 8px rgba(88,168,104,0.9)); animation:swGlow 1.2s ease-in-out infinite; }
+.int-cell.wonky-loom-weaving .wonky-loom-idle .int-item { filter:drop-shadow(0 0 8px rgba(192,112,144,0.9)); animation:swGlow 1.2s ease-in-out infinite; }
 @keyframes swGlow { 0%,100%{filter:drop-shadow(0 0 6px rgba(192,112,144,0.6))} 50%{filter:drop-shadow(0 0 12px rgba(220,140,170,1))} }
 .int-cell[data-int-key="dogbed"]:not(.dogbed-unlocked) .plot-activity-top {
   height:100%;
@@ -1784,6 +1819,18 @@ body {
 .pet-stat-row { display:flex; justify-content:space-between; font-family: var(--font-ui); font-size:16px; color:var(--ui-text); padding:6px 0; border-bottom:1px solid rgba(200,169,110,0.12); }
 .pet-stat-row span:last-child { color:var(--ui-accent); }
 .pet-detail-actions { display:flex; flex-direction:column; gap:8px; margin-top:14px; }
+.pet-treat-block { border:2px solid rgba(200,169,110,0.2); background:rgba(255,255,255,0.03); border-radius:2px; padding:12px; margin-bottom:12px; }
+.pet-treat-option { display:flex; align-items:center; gap:10px; padding:10px; border:1px solid rgba(200,169,110,0.28); border-radius:2px; cursor:pointer; background:rgba(0,0,0,0.15); }
+.pet-treat-option.unavail { opacity:0.55; cursor:default; }
+.pet-treat-option-icon { font-size:24px; line-height:1; }
+.pet-treat-option-body { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.pet-level-block { border:2px solid rgba(200,169,110,0.2); background:rgba(255,255,255,0.03); border-radius:2px; padding:12px; margin-bottom:12px; }
+.pet-level-summary { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid rgba(200,169,110,0.28); border-radius:2px; cursor:pointer; background:rgba(0,0,0,0.15); }
+.pet-level-summary-main { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.pet-level-chevron { font-size:12px; color:rgba(200,169,110,0.65); flex-shrink:0; }
+.pet-level-expand { margin-top:10px; padding-top:10px; border-top:1px solid rgba(200,169,110,0.15); }
+.pet-level-benefit { font-family: var(--font-ui); font-size:15px; color:rgba(200,169,110,0.88); line-height:1.35; margin-bottom:10px; }
+.pet-level-btn-disabled { opacity:0.5; cursor:default; }
 .pet-abandon-btn { background:rgba(120,40,40,0.35); border-color:rgba(180,60,60,0.5); color:rgba(255,180,180,0.9); }
 .pet-slot-icon { font-size:22px; line-height:1; }
 .pet-slot-shard { font-size:11px; line-height:1; margin-top:2px; }
@@ -1796,7 +1843,9 @@ body {
 .fp-recipe-card.selected { border-color:var(--ui-accent); background:rgba(232,200,74,0.07); }
 .fp-recipe-card.locked { opacity:0.62; cursor:default; }
 .fp-recipe-card.below-rec { border-color:rgba(180,70,70,0.32); background:rgba(60,16,16,0.12); filter:saturate(0.82); }
-.fp-recipe-row { display:flex; justify-content:space-between; align-items:center; font-family: var(--font-ui); font-size:16px; color:var(--ui-text); }
+.fp-recipe-row { display:flex; justify-content:space-between; align-items:center; font-family: var(--font-ui); font-size:16px; color:var(--ui-text); width:100%; }
+.fp-recipe-row .plot-add-item-title-row { width:100%; }
+.fp-recipe-row .plot-add-item-title { font-size:16px; }
 .store-body { position:absolute; top:var(--chrome-h); bottom:0; left:0; right:0; overflow-y:auto; padding:14px; }
 .store-summary { background:rgba(255,255,255,0.03); border:1px solid rgba(200,169,110,0.2); border-radius:2px; padding:10px 12px; margin-bottom:12px; }
 .store-summary-tap { cursor:pointer; transition:filter 0.15s, border-color 0.15s; border-radius:2px; margin:-2px; padding:2px; }
@@ -1821,6 +1870,7 @@ body {
 .int-cell.buildable .int-item { opacity:0.45; }
 .wb-body { position:absolute; top:var(--chrome-h); bottom:0; left:0; right:0; overflow-y:auto; padding:14px; }
 .wb-header { background:rgba(255,255,255,0.02); border:1px solid var(--ui-border); border-radius:2px; padding:12px; margin-bottom:12px; }
+.wb-header[hidden] { display:none !important; }
 .wb-title-row { display:flex; align-items:center; gap:12px; }
 .wb-icon { font-size:36px; line-height:1; }
 .wb-item-name { font-size:13px; font-weight:600; color:var(--ui-text); margin-bottom:4px; letter-spacing:0.04em; }
@@ -1844,6 +1894,7 @@ body {
 .wb-res-val { font-family: var(--font-ui); font-size:16px; color:var(--ui-accent); }
 
 .wb-xp-preview { display:none; }
+.sw-body .wb-xp-preview { display:block; margin-bottom:10px; }
 .wb-cost-notice { display:none; }
 .wb-materials {
   display:grid; grid-template-columns:1fr 1fr; gap:8px;
@@ -1887,9 +1938,39 @@ body {
 .wb-furn-pick-chevron { color:var(--ui-text-dim); font-size:11px; flex-shrink:0; }
 .wb-furn-pick-panel { display:none; margin-top:8px; }
 .wb-furn-pick-panel.open { display:block; }
-.wb-furn-tier { margin-bottom:10px; }
+.wb-furn-tier {
+  margin-bottom:8px;
+  border:2px solid rgba(200,169,110,0.2);
+  border-radius:2px;
+  overflow:hidden;
+}
+.wb-furn-tier-head {
+  display:flex; flex-direction:column; align-items:flex-start; gap:4px;
+  width:100%; padding:10px 32px 10px 12px; border:none; cursor:pointer;
+  background:rgba(255,255,255,0.03); color:var(--ui-text);
+  font-family:var(--font-ui); text-align:left; position:relative;
+}
+.wb-furn-tier-head:active { filter:brightness(1.15); }
+.wb-furn-tier-label {
+  font-size:10px; font-weight:600; letter-spacing:1px;
+  color:var(--ui-text-dim); text-transform:uppercase;
+}
+.wb-furn-tier-woods {
+  font-size:14px; font-weight:500; color:var(--ui-text); line-height:1.35;
+}
+.wb-furn-tier-chevron {
+  position:absolute; right:12px; top:50%;
+  font-size:11px; color:var(--ui-text-dim); transition:transform 0.15s;
+  transform:translateY(-50%);
+}
+.wb-furn-tier.open .wb-furn-tier-chevron { transform:translateY(-50%) rotate(90deg); }
+.wb-furn-tier-body { display:none; padding:8px; background:rgba(255,255,255,0.02); }
+.wb-furn-tier.open .wb-furn-tier-body { display:block; }
+.wb-furn-tier-body .wb-furn-project-card { margin-bottom:6px; }
+.wb-furn-tier-body .wb-furn-project-card:last-child { margin-bottom:0; }
 .wb-furn-card-sub { font-family:var(--font-ui); font-size:11px; color:var(--ui-text-dim); margin-top:4px; line-height:1.35; }
 .wb-furn-unlock-hint { display:block; margin-top:4px; font-size:11px; font-weight:600; color:rgba(88,168,104,0.95); letter-spacing:0.02em; }
+.wb-furn-botany-unlock { font-weight:700; color:#ff6ec7; }
 .wb-furn-tier-tag { font-size:10px; font-weight:600; letter-spacing:0.06em; color:var(--ui-accent); text-transform:uppercase; }
 .wb-furn-stat { font-family:var(--font-ui); font-size:11px; color:var(--ui-text-dim); display:block; margin-top:4px; }
 .wb-mat-picker-section { margin-bottom:0; min-width:0; }
@@ -2033,6 +2114,10 @@ body {
   font-family:var(--font-ui); font-size:11px; color:var(--ui-text-dim);
   line-height:1.45; margin:10px 0 4px; padding:8px 10px;
   background:rgba(255,255,255,0.03); border:1px solid rgba(112,72,200,0.18); border-radius:2px;
+}
+.pet-magpie-shiny {
+  font-family:var(--font-ui); font-size:13px; font-weight:600; font-style:italic;
+  color:#e8c84a; letter-spacing:0.03em; margin:-2px 0 8px; text-align:center;
 }
 
 /* ─────────────────────────────────────────
@@ -2265,7 +2350,10 @@ body {
       </div>
     </div>
   </div>
-  <button type="button" class="plot-home-btn" id="interior-home-btn" onclick="recenterInteriorOnHome()">home</button>
+  <div class="interior-top-actions" id="interior-top-actions">
+    <button type="button" class="plot-home-btn" id="interior-rooms-btn" hidden onclick="showInteriorRoomCountInfo()">0/0 rooms built</button>
+    <button type="button" class="plot-home-btn" id="interior-home-btn" onclick="recenterInteriorOnHome()">home</button>
+  </div>
   <div class="plot-edit-bar interior-build-bar" id="interior-build-bar">
     <button type="button" class="plot-edit-btn" id="interior-build-btn" onclick="toggleInteriorBuildMode()">🏗️ Building mode</button>
     <button type="button" class="plot-edit-btn plot-edit-btn-secondary" id="interior-reset-btn" onclick="confirmResetInteriorLayout()">↺ Reset to default</button>
@@ -2720,7 +2808,7 @@ body {
         <span class="wb-icon">🔥</span>
         <div>
           <div class="wb-item-name">Cooking</div>
-          <div class="wb-item-sub">Raw fish from bag or store room</div>
+          <div class="wb-item-sub">Uses available raw fish</div>
         </div>
       </div>
     </div>
@@ -2763,7 +2851,7 @@ body {
         <span class="wb-icon">🎡</span>
         <div>
           <div class="wb-item-name">Spinning</div>
-          <div class="wb-item-sub">Tailoring skill • fibers from bag or store room</div>
+          <div class="wb-item-sub">Tailoring skill • uses available fibers</div>
         </div>
       </div>
     </div>
@@ -2775,6 +2863,46 @@ body {
     <div class="sw-status idle" id="sw-status">Ready to spin</div>
     <div class="wb-action-area" id="sw-buttons"></div>
     <div class="wb-log" id="sw-log"></div>
+  </div>
+</div>
+
+<!-- LOOM SCREEN -->
+<div id="loom-screen" class="screen">
+<div class="top-bar">
+    <button class="home-btn" onclick="navHome()">🗺️</button>
+    <div class="top-bar-title">Wonky Loom</div>
+    <div class="stat-pill stat-pill-skill" id="loom-skill-pill" tabindex="0">
+      <span class="stat-icon" id="loom-skill-icon">🧵</span>
+      <span class="skill-pill-lvl" id="loom-skill-lvl">1</span>
+      <div class="skill-pill-bar"><div class="skill-pill-fill sk-tailoring" id="loom-skill-fill" style="height:0%"></div></div>
+      <span class="skill-pill-tip" id="loom-skill-tip"></span>
+    </div>
+    <div class="stat-pill stat-pill-gold" id="gold-pill-loom"><span class="stat-val" id="gold-loom">0</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-loom">0</span>/50</span></div>
+  </div>
+  <div class="top-nav">
+    <button class="nav-btn" onclick="closeLoomScreen()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
+    <button class="nav-btn" onclick="event.stopPropagation();togglePanel('equip')"><span class="nav-btn-icon">⚔️</span><span class="nav-btn-label">EQUIP</span></button>
+  </div>
+  <div class="sw-body activity-panel">
+    <div class="wb-header">
+      <div class="wb-title-row">
+        <span class="wb-icon">🧵</span>
+        <div>
+          <div class="wb-item-name">Tailoring</div>
+          <div class="wb-item-sub" id="loom-subtitle">Tailoring skill • weave thread and fiber</div>
+        </div>
+      </div>
+    </div>
+    <div id="loom-output-row" style="margin-bottom:8px"></div>
+    <div class="store-items" id="loom-material-section" style="margin-bottom:12px">
+      <div class="store-items-title">MATERIAL</div>
+      <div id="loom-recipe-list"></div>
+    </div>
+    <div class="wb-xp-preview" id="loom-xp-preview"></div>
+    <div class="sw-status idle" id="loom-status">Turn thread and fiber into fabric</div>
+    <div class="wb-action-area" id="loom-buttons"></div>
+    <div class="wb-log" id="loom-log"></div>
   </div>
 </div>
 
@@ -2802,7 +2930,7 @@ body {
         <span class="wb-icon">⚗️</span>
         <div>
           <div class="wb-item-name">Apothecary Table</div>
-          <div class="wb-item-sub" id="botany-subtitle">Sort unidentified herbs from bag or store room</div>
+          <div class="wb-item-sub" id="botany-subtitle">Sort available unidentified herbs</div>
         </div>
       </div>
     </div>
@@ -2893,6 +3021,7 @@ body {
 <script src="data/water.js"></script>
 <script src="data/furniture.js"></script>
 <script src="data/botany.js"></script>
+<script src="data/loom.js"></script>
 <script src="data/pets.js"></script>
 <script src="js/constants.js"></script>
 <script src="js/data-init.js"></script>
@@ -2908,6 +3037,7 @@ body {
 <script src="js/fire-pit.js"></script>
 <script src="js/interactions.js"></script>
 <script src="js/botany-table.js"></script>
+<script src="js/loom.js"></script>
 <script src="js/workbench.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/save.js"></script>

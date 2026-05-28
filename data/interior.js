@@ -53,6 +53,7 @@ const INTERIOR_ROOM_DEFS = {
   dogbed:    { typeId:'dogbed',    name:'Dog Bed',   icon:'🛏️', desc:'Tidy up, manage pets, and unlock husbandry perks.' },
   spinningwheel: { typeId:'spinningwheel', name:'Spinning Wheel', icon:'🎡', desc:'Spin fibers into thread — basic, medium, and enhanced.' },
   apothecary_table: { typeId:'apothecary_table', name:'Apothecary Table', icon:'⚗️', desc:'Identify foraged herbs and unlock botany work.' },
+  wonky_loom: { typeId:'wonky_loom', name:'Wonky Loom', icon:'🧵', desc:'Weave thread and fiber into cloth — wobbly, but it works.' },
 };
 const FURNITURE_DEFS={};
 

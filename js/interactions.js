@@ -195,6 +195,7 @@ function closePetsScreen(){
 }
 
 let viewingPetId=null;
+let petLevelPanelOpen=false;
 
 function openPetPartnerScreen(){
   const max=maxOwnedPets();
@@ -255,6 +256,7 @@ function renderPetPartnerPanel(){
 }
 
 function openPetDetail(id){
+  if(viewingPetId!==id) petLevelPanelOpen=false;
   viewingPetId=id;
   document.getElementById('pet-list-panel').style.display='none';
   document.getElementById('pet-partner-panel').style.display='none';
@@ -264,6 +266,7 @@ function openPetDetail(id){
 
 function closePetDetail(){
   viewingPetId=null;
+  petLevelPanelOpen=false;
   document.getElementById('pet-detail-panel').style.display='none';
   document.getElementById('pet-list-panel').style.display='block';
   renderPetsScreen();
@@ -271,8 +274,15 @@ function closePetDetail(){
 
 function getPetAbilityText(pet, equipped){
   const def=getPetSpeciesDef(pet.type);
+  if(def.passiveType==='nailCollect'){
+    const drops=getPetMagpieNailDropSummary(getPetLevel(pet));
+    if(equipped){
+      return pet.name+' follows you scavenging shiny nails — 1 delivered to storage each minute ('+drops+').';
+    }
+    return 'Equip '+pet.name+' to follow you. While equipped, they stash 1 nail per minute in storage ('+drops+').';
+  }
   if(def.passiveType==='storageRedirect'){
-    const pct=Math.round((def.passiveChance||DOG_STORAGE_FETCH_CHANCE)*100);
+    const pct=Math.round(getPetDogFetchChance(pet)*100);
     if(equipped){
       return pet.name+' follows you and sometimes fetches new loot straight to storage — '+pct+'% chance per item you pick up.';
     }
@@ -281,10 +291,11 @@ function getPetAbilityText(pet, equipped){
   if(def.passiveType==='shard'){
     const sm=SHARD_META[pet.shard]||SHARD_META.earth;
     const shardLabel=sm.name.toLowerCase().replace(' shard','');
+    const pct=getCatShardChancePercent(getPetLevel(pet));
     if(equipped){
-      return pet.name+' follows you and quietly hunts for '+shardLabel+' shards — about a 2% chance each minute while you play.';
+      return pet.name+' follows you and quietly hunts for '+shardLabel+' shards — about a '+pct+'% chance each minute while you play.';
     }
-    return 'Equip '+pet.name+' to follow you. While equipped, they passively find '+shardLabel+' shards (2% chance per minute). At home on the bed they rest.';
+    return 'Equip '+pet.name+' to follow you. While equipped, they passively find '+shardLabel+' shards ('+pct+'% chance per minute). At home on the bed they rest.';
   }
   return 'Equip '+pet.name+' to follow you. No passive effect yet.';
 }
@@ -303,6 +314,92 @@ function buildPetLockedSlotHtml(unlockLvl){
     +'</div></div>';
 }
 
+function buildPetLevelPanelHtml(pet){
+  const status=getPetLevelUpStatus(pet);
+  let body='<div class="pet-level-block">'
+    +'<div class="store-items-title" style="margin-bottom:8px">PET PROGRESS</div>';
+  if(status.maxLevel){
+    body+='<div class="pet-stat-row" style="border-bottom:none"><span>Level</span><span>Lv '+status.level+' (max)</span></div>';
+  }else{
+    const expCls=wbStockClass(status.expOk?1:0);
+    body+='<div class="pet-level-summary'+(petLevelPanelOpen?' open':'')+'" onclick="togglePetLevelPanel(\''+pet.id+'\')">'
+      +'<span class="pet-level-summary-main">'
+      +'<span class="wb-item-name">Lv '+status.level+' → Lv '+status.nextLevel+'</span>'
+      +'<span class="wb-item-sub"><span class="wb-mat-pick-avail '+expCls+'">Pet progress '+status.exp+' / '+status.expReq+'</span></span>'
+      +'</span>'
+      +'<span class="pet-level-chevron">'+(petLevelPanelOpen?'▼':'▶')+'</span>'
+      +'</div>';
+    if(petLevelPanelOpen){
+      const itemCls=wbStockClass(status.itemOk?1:0);
+      body+='<div class="pet-level-expand">'
+        +'<div class="pet-level-benefit">'+status.benefit+'</div>'
+        +'<div class="pet-stat-row"><span>'+status.item.icon+' '+status.item.name+' ×'+status.itemNeed+'</span>'
+        +'<span class="wb-mat-pick-avail '+itemCls+'">'+formatAvailableCount(status.stock)+'</span></div>'
+        +'<div class="store-line" style="margin-top:8px;font-size:14px">Earns 1 progress each minute while following you.</div>'
+        +'<button type="button" class="wb-btn'+(status.canLevelUp?'':' pet-level-btn-disabled')+'" style="margin-top:10px;width:100%" onclick="'+(status.canLevelUp?'levelUpPet(\''+pet.id+'\');event.stopPropagation();':'')+'">Level up → Lv '+status.nextLevel+'</button>'
+        +'</div>';
+    }
+  }
+  body+='</div>';
+  return body;
+}
+
+function togglePetLevelPanel(id){
+  if(petLevelPanelOpen&&viewingPetId===id) petLevelPanelOpen=false;
+  else petLevelPanelOpen=true;
+  renderPetDetail(id);
+}
+
+function levelUpPet(id){
+  const pet=state.pets.find(p=>p.id===id);
+  if(!pet) return;
+  const status=getPetLevelUpStatus(pet);
+  if(status.maxLevel){
+    showToast(pet.name+' is already max level.');
+    renderPetDetail(id);
+    return;
+  }
+  if(!status.canLevelUp){
+    showToast('Need '+status.expReq+' pet progress and '+status.itemNeed+' '+status.item.name+' to level up.');
+    renderPetDetail(id);
+    return;
+  }
+  if(!consumeManyFromBagOrStore(status.item.key, status.itemNeed)){
+    showToast('Could not take level-up items.');
+    return;
+  }
+  pet.exp=0;
+  pet.level=status.nextLevel;
+  showToast(getPetLevelUpGainMessage(pet, pet.level));
+  petLevelPanelOpen=true;
+  renderPetDetail(id);
+  renderPetsScreen(id);
+  scheduleSaveGame();
+}
+
+function buildPetTreatPanelHtml(pet){
+  const treat=getPetTreatStatus(pet);
+  if(!treat) return '';
+  const { item, amount, stock, fed, xp, canFeed }=treat;
+  let body='<div class="pet-treat-block">'
+    +'<div class="store-items-title" style="margin-bottom:8px">TREAT PET</div>';
+  if(fed){
+    body+='<div class="store-line" style="margin-bottom:8px">Fed for today — a new request tomorrow.</div>'
+      +'<div class="pet-stat-row"><span>Last treat</span><span>'+item.icon+' '+amount+' '+item.name+' · +'+xp+' Husbandry</span></div>';
+  }else{
+    const stockCls=wbStockClass(stock>=amount?1:0);
+    body+='<div class="store-line" style="margin-bottom:8px">'+escapeHtml(pet.name)+' wants a treat today.</div>'
+      +'<div class="pet-treat-option'+(canFeed?'':' unavail')+'" onclick="'+(canFeed?'givePetTreat(\''+pet.id+'\')':'')+'">'
+      +'<span class="pet-treat-option-icon">'+item.icon+'</span>'
+      +'<span class="pet-treat-option-body">'
+      +'<span class="wb-item-name">'+item.name+' ×'+amount+'</span>'
+      +'<span class="wb-item-sub"><span class="wb-mat-pick-avail '+stockCls+'">'+formatAvailableCount(stock)+'</span> · +'+xp+' Husbandry</span>'
+      +'</span></div>';
+  }
+  body+='</div>';
+  return body;
+}
+
 function renderPetDetail(id){
   const pet=state.pets.find(p=>p.id===id);
   const panel=document.getElementById('pet-detail-panel');
@@ -313,8 +410,8 @@ function renderPetDetail(id){
   const eqCount=(state.equippedPetIds||[]).length;
   const canEquip=!equipped&&eqCount<MAX_EQUIPPED_PETS;
   const subLine=sm
-    ?(sm.icon+' '+sm.name+' · Lv '+pet.level)
-    :(def.icon+' '+def.name+' · Lv '+pet.level);
+    ?(sm.icon+' '+sm.name+' · Lv '+getPetLevel(pet))
+    :(def.icon+' '+def.name+' · Lv '+getPetLevel(pet));
   panel.innerHTML=
     '<button type="button" class="wb-btn once" onclick="closePetDetail()" style="margin-bottom:12px;width:100%">◀ BACK</button>'
     +'<div class="pet-detail-card">'
@@ -322,11 +419,14 @@ function renderPetDetail(id){
     +'<div><div class="wb-item-name">'+escapeHtml(pet.name)+'</div>'
     +'<div class="wb-item-sub">'+subLine+'</div></div></div>'
     +'<div class="pet-ability-block">'+getPetAbilityText(pet, equipped)+'</div>'
+    +(pet.type==='magpie'?'<div class="pet-magpie-shiny">Ooh, shiny!</div>':'')
     +'<input type="text" class="pet-name-input" id="pet-name-input" maxlength="20" value="'+escapeHtml(pet.name)+'" onchange="savePetName(\''+pet.id+'\',this.value)">'
     +'<div class="pet-stat-row"><span>Birthday</span><span>'+formatPetBirthday(pet.birthday)+'</span></div>'
     +'<div class="pet-stat-row"><span>Active time</span><span>'+formatDuration(getPetActiveTimeMs(pet))+'</span></div>'
     +'<div class="pet-stat-row"><span>Following you</span><span>'+(equipped?'Yes 🐾':'No')+'</span></div>'
     +'</div>'
+    +buildPetLevelPanelHtml(pet)
+    +buildPetTreatPanelHtml(pet)
     +'<div class="pet-detail-actions">'
     +(equipped
       ?'<button type="button" class="wb-btn" onclick="unequipPet(\''+pet.id+'\')">Send home</button>'
@@ -347,6 +447,34 @@ function savePetName(id,name){
   const trimmed=(name||'').trim().slice(0,20);
   pet.name=trimmed||getPetSpeciesDef(pet.type).name;
   renderPetsScreen(id);
+}
+
+function givePetTreat(id){
+  const pet=state.pets.find(p=>p.id===id);
+  if(!pet) return;
+  const treat=getPetTreatStatus(pet);
+  if(treat.fed){
+    showToast(pet.name+' already had a treat today.');
+    renderPetDetail(id);
+    return;
+  }
+  const { item, amount, xp }=treat;
+  if(itemCountBagAndStore(item.key)<amount){
+    showToast('Need '+amount+' '+item.name+'.');
+    renderPetDetail(id);
+    return;
+  }
+  if(!consumeManyFromBagOrStore(item.key, amount)){
+    showToast('Could not take treat items.');
+    return;
+  }
+  pet.treatFed=true;
+  pet.treatXp=xp;
+  grantXP('husbandry', xp, null);
+  showToast(pet.name+' enjoyed the treat! +'+xp+' Husbandry');
+  renderPetDetail(id);
+  renderPetsScreen(id);
+  scheduleSaveGame();
 }
 
 function equipPet(id){
@@ -494,18 +622,23 @@ function adoptPet(type){
   }
   const pet=createPet(type);
   state.pets.push(pet);
+  const husbandryXp=husbandryXpForPetAdoption(def);
+  grantXP('husbandry', husbandryXp, null);
   if(!state.equippedPetIds) state.equippedPetIds=[];
   if(state.equippedPetIds.length<MAX_EQUIPPED_PETS){
     pet.equippedSince=Date.now();
     state.equippedPetIds.push(pet.id);
   }
+  const xpNote=' +'+husbandryXp+' Husbandry';
   if(def.passiveType==='shard'&&pet.shard){
     const sm=SHARD_META[pet.shard];
-    showToast(def.icon+' '+pet.name+' settles on the bed. A '+sm.name.toLowerCase()+' hunter.');
+    showToast(def.icon+' '+pet.name+' settles on the bed. A '+sm.name.toLowerCase()+' hunter.'+xpNote);
   }else if(def.passiveType==='storageRedirect'){
-    showToast(def.icon+' '+pet.name+' settles on the bed. Ready to fetch.');
+    showToast(def.icon+' '+pet.name+' settles on the bed. Ready to fetch.'+xpNote);
+  }else if(def.passiveType==='nailCollect'){
+    showToast(def.icon+' '+pet.name+' settles on the bed. Ooh, shiny!'+xpNote);
   }else{
-    showToast(def.icon+' '+pet.name+' settles on the bed.');
+    showToast(def.icon+' '+pet.name+' settles on the bed.'+xpNote);
   }
   const partnerOpen=document.getElementById('pet-partner-panel')?.style.display!=='none';
   if(partnerOpen) closePetPartnerScreen();
@@ -521,17 +654,26 @@ let petPassiveTimer=null;
 function tickPetPassives(){
   const ids=state.equippedPetIds||[];
   if(!ids.length) return;
+  let detailRefresh=false;
   ids.forEach(id=>{
     const pet=state.pets.find(p=>p.id===id);
-    if(!pet||!pet.shard) return;
+    if(!pet) return;
+    if(grantPetFollowProgress(pet)&&viewingPetId===id) detailRefresh=true;
     const def=getPetSpeciesDef(pet.type);
-    if(def.passiveType!=='shard') return;
-    if(Math.random()>=PET_PASSIVE_CHANCE) return;
-    state.pockets[pet.shard]=(state.pockets[pet.shard]||0)+1;
-    const sm=SHARD_META[pet.shard];
-    showQuickToast(pet.name+' found '+sm.icon);
-    if(openPanel==='inv') renderInvPanel();
+    if(def.passiveType==='shard'&&pet.shard){
+      if(Math.random()>=getPetShardPassiveChance(pet)) return;
+      state.pockets[pet.shard]=(state.pockets[pet.shard]||0)+1;
+      const sm=SHARD_META[pet.shard];
+      showQuickToast(pet.name+' found '+sm.icon);
+      if(openPanel==='inv') renderInvPanel();
+    }else if(def.passiveType==='nailCollect'){
+      const nailKey=rollMagpieNailDrop(getPetLevel(pet));
+      if(!nailKey||!grantNailToStorage(nailKey)) return;
+      const nail=NAIL_TYPES[nailKey];
+      showQuickToast(pet.name+': ooh shiny! '+(nail?.icon||'🔩'));
+    }
   });
+  if(detailRefresh) renderPetDetail(viewingPetId);
   syncUI();
 }
 
@@ -664,7 +806,7 @@ function renderCookRecipePickerList(el, pickerOpen, toggleHandler, selectHandler
   const pct=Math.round(calcCookSuccess(recipe)*100);
   const cookLvl=Number(state.skills.cooking?.level)||1;
   const stockCls=wbStockClass(total);
-  const stockLine=recipe.rawName+' - '+total+' in stock';
+  const stockLine=recipe.rawName+' — '+formatAvailableCount(total);
 
   if(!pickerOpen){
     el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<1?' unavail':'')+'" onclick="'+toggleHandler+'()">'
@@ -690,7 +832,7 @@ function renderCookRecipePickerList(el, pickerOpen, toggleHandler, selectHandler
     const onclick=locked?'':' onclick="'+selectHandler+'(\''+key+'\')"';
     const desc=locked
       ?('🔒 Cooking Lv '+r.unlockLevel+' (same as Fishing)')
-      :('<span class="wb-mat-stock '+wbStockClass(stock)+'">'+r.rawName+' - '+stock+' in stock</span>'
+      :('<span class="wb-mat-stock '+wbStockClass(stock)+'">'+r.rawName+' — '+formatAvailableCount(stock)+'</span>'
         +'<span style="display:block;font-size:10px;color:var(--ui-text-dim);margin-top:2px">'+p+'% success</span>');
     return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
       +'<span class="wb-mat-icon">'+r.rawIcon+'</span>'
@@ -733,7 +875,6 @@ function renderFireplace(){
   const btnEl=document.getElementById('fp-buttons');
   if(!btnEl) return;
   const can=canCookRecipe(recipe);
-  const needSpace=!canStoreCookedResult(recipe)&&itemCountBagAndStore(recipe.rawKey)>0;
   renderOnceContinuousButtons({
     btnEl,
     running:cook.running,
@@ -743,15 +884,8 @@ function renderFireplace(){
     continuousOnclick:'cookContinuous()',
     stopOnclick:'stopCooking()',
     stopLabel:'⛔ STOP COOKING',
-    noticeHtml:needSpace?'<div class="wb-cost-notice">Bag full — only burns possible until you make space.</div>':'',
+    noticeHtml:!can?('<div class="wb-cost-notice">'+escapeHtml(getCookBlockReason(recipe)||'Cannot cook right now.')+'</div>'):'',
   });
-}
-
-function syncCookRecipeKey(){
-  if(!canCookRecipe(COOKING_RECIPES[cook.recipeKey])){
-    const fallback=Object.keys(COOKING_RECIPES).find(k=>canCookRecipe(COOKING_RECIPES[k]));
-    if(fallback) cook.recipeKey=fallback;
-  }
 }
 
 let cookActivity=null;
@@ -762,13 +896,16 @@ function getCookActivity(){
     type:'cooking',
     state:cook,
     label:'Cooking',
-    canContinue:()=>canCookAnyRaw(),
+    canContinue:()=>canCookRecipe(COOKING_RECIPES[cook.recipeKey]),
     cannotStartMsg:'No raw food to cook.',
-    outOfResourcesMsg:'Out of raw food.',
-    onPrepare:()=>syncCookRecipeKey(),
+    outOfResourcesMsg:'Out of that raw food or bag full.',
     onAttempt:()=>{
-      syncCookRecipeKey();
-      if(!canCookRecipe(COOKING_RECIPES[cook.recipeKey])) return false;
+      const recipe=COOKING_RECIPES[cook.recipeKey];
+      const blockReason=getCookBlockReason(recipe);
+      if(blockReason){
+        showToast(blockReason);
+        return false;
+      }
       doCookAttempt(cook.recipeKey);
     },
     onRefresh:()=>{
@@ -790,9 +927,10 @@ function stopCooking(fromActivitySwitch){
 
 function cookOnce(){
   stopOtherActivities(null);
-  syncCookRecipeKey();
-  if(!canCookRecipe(COOKING_RECIPES[cook.recipeKey])){
-    showToast('No raw food to cook.');
+  const recipe=COOKING_RECIPES[cook.recipeKey];
+  const blockReason=getCookBlockReason(recipe);
+  if(blockReason){
+    showToast(blockReason);
     refreshCookingScreen();
     return;
   }
@@ -802,28 +940,33 @@ function cookOnce(){
 }
 
 function cookContinuous(){
+  const recipe=COOKING_RECIPES[cook.recipeKey];
+  const blockReason=getCookBlockReason(recipe);
+  if(blockReason){
+    showToast(blockReason);
+    refreshCookingScreen();
+    return;
+  }
   getCookActivity().startContinuous();
 }
 
 function doCookAttempt(recipeKey){
   const recipe=COOKING_RECIPES[recipeKey];
   if(!recipe||!canCookRecipe(recipe)) return {ok:false};
-  const rawInBag=(state.inventory[recipe.rawKey]?.count||0)>0;
-  if(!consumeOneFromBagOrStore(recipe.rawKey)) return {ok:false};
+  if(!consumeRawForCook(recipe)) return {ok:false};
   const rate=calcCookSuccess(recipe);
   const success=Math.random()<rate;
   const logId=getCookActivityLogId();
   if(success){
-    if(rawInBag||invTotal()<INV_CAP){
+    if(invTotal()<INV_CAP){
       invAddDirect(recipe.cookedKey,recipe.cookedIcon,recipe.cookedName,1);
       grantXP('cooking',recipe.xpSuccess,null,{ deferSync:cook.running });
       addActivityLog(logId,recipe.cookedIcon+' '+recipe.cookedName+' cooked! +'+recipe.xpSuccess+' Cooking','success');
       return {ok:true,success:true};
     }
-    if(!state.storage[recipe.rawKey]) state.storage[recipe.rawKey]={icon:recipe.rawIcon,name:recipe.rawName,count:0};
-    state.storage[recipe.rawKey].count++;
-    addActivityLog(logId,'Bag full — raw returned to storage.','fail');
-    return {ok:true,success:false,returned:true};
+    returnOneToBagOrStore(recipe.rawKey,recipe.rawIcon,recipe.rawName);
+    addActivityLog(logId,'Bag full — raw fish returned.','fail');
+    return {ok:true,success:false,bagFull:true};
   }
   grantXP('cooking',recipe.xpBurn,null,{ deferSync:cook.running });
   const msg='Burnt. +' + recipe.xpBurn + ' Cooking (' + Math.round(rate*100) + '% was the odds)';
@@ -918,7 +1061,7 @@ function renderSwRecipePicker(){
   const total=itemCountBagAndStore(recipe.rawKey);
   const pct=Math.round(calcSpinSuccess(recipe)*100);
   const stockCls=wbStockClass(total);
-  const stockLine=recipe.rawName+' - '+total+' in stock';
+  const stockLine=recipe.rawName+' — '+formatAvailableCount(total);
 
   if(!swRecipePickerOpen){
     el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<1?' unavail':'')+'" onclick="toggleSwRecipePicker()">'
@@ -954,7 +1097,7 @@ function renderSwRecipePicker(){
         +'<span class="wb-mat-icon">'+r.rawIcon+'</span>'
         +'<span class="wb-mat-info">'
         +'<span class="wb-mat-name">'+spinRecipeLabel(r)+'</span>'
-        +'<span class="wb-mat-stock '+wbStockClass(stock)+'">'+r.rawName+' - '+stock+' in stock • '+p+'% success</span>'
+        +'<span class="wb-mat-stock '+wbStockClass(stock)+'">'+r.rawName+' — '+formatAvailableCount(stock)+' • '+p+'% success</span>'
         +'</span></div>';
     }).join('');
     return '<div class="sw-tier-label">'+tier.toUpperCase()+' THREAD</div>'+rows;
@@ -974,7 +1117,7 @@ function renderSpinningWheel(){
   const xpEl=document.getElementById('sw-xp-preview');
   if(xpEl){
     xpEl.innerHTML='<span class="wb-xp-line">Success: +'+recipe.xpSuccess+' Tailoring • Fail: +'+recipe.xpFail+' Tailoring</span>'
-      +'<span class="wb-xp-line">'+pct+'% success at Tailoring Lv '+(state.skills.tailoring?.level||1)+'</span>';
+      +'<span class="wb-xp-line">'+pct+'% success at Tailoring Lvl '+(state.skills.tailoring?.level||1)+'</span>';
   }
   const status=document.getElementById('sw-status');
   if(status){
@@ -998,13 +1141,6 @@ function renderSpinningWheel(){
   });
 }
 
-function syncSpinRecipeKey(){
-  if(!canSpinRecipe(SPINNING_RECIPES[spin.recipeKey])){
-    const fallback=SPIN_RECIPE_ORDER.find(k=>canSpinRecipe(SPINNING_RECIPES[k]));
-    if(fallback) spin.recipeKey=fallback;
-  }
-}
-
 let spinActivity=null;
 
 function getSpinActivity(){
@@ -1013,12 +1149,10 @@ function getSpinActivity(){
     type:'spinning',
     state:spin,
     label:'Spinning',
-    canContinue:()=>canSpinAnyFiber(),
+    canContinue:()=>canSpinRecipe(SPINNING_RECIPES[spin.recipeKey]),
     cannotStartMsg:'No fibers to spin.',
-    outOfResourcesMsg:'Out of fibers.',
-    onPrepare:()=>syncSpinRecipeKey(),
+    outOfResourcesMsg:'Out of that fiber.',
     onAttempt:()=>{
-      syncSpinRecipeKey();
       if(!canSpinRecipe(SPINNING_RECIPES[spin.recipeKey])) return false;
       doSpinAttempt(spin.recipeKey);
     },
@@ -1041,7 +1175,6 @@ function stopSpinning(fromActivitySwitch){
 
 function spinOnce(){
   stopOtherActivities(null);
-  syncSpinRecipeKey();
   if(!canSpinRecipe(SPINNING_RECIPES[spin.recipeKey])){
     showToast('No fibers to spin.');
     renderSpinningWheel();
@@ -1089,16 +1222,21 @@ function pokeFireplace(){
 
 function addLogToFire(){
   document.getElementById('fp-menu')?.remove();
-  let usedKey=null;
-  for(const k of Object.keys(LOG_TYPES)){
-    if(state.inventory[k]?.count>0){ usedKey=k; break; }
+  stopOtherActivities(null);
+  const logKey=pickBestLogKeyForBurning();
+  if(!logKey){
+    showToast('No wood available.');
+    return;
   }
-  if(!usedKey){ showToast("No wood in your bag."); return; }
-  state.inventory[usedKey].count--;
-  if(!state.inventory[usedKey].count) delete state.inventory[usedKey];
+  const result=burnLogForFireAffinity(logKey);
+  if(!result.ok){
+    showToast('No wood available.');
+    return;
+  }
   state.logsOnFire++;
-  grantXP('cooking',1,null);
-  showToast("You feed the fire. It brightens. +1 Cooking 🍳");
+  addActivityLog('fp-log',(result.logDef.icon||'🪵')+' '+(result.logDef.name||'Log')+' fed to the hearth. +'+result.xp+' Fire','success');
+  showToast('You feed the fire. It brightens. +' + result.xp + ' Fire 🔥');
+  syncUI();
 }
 
 function ensureStoreRoomShelfFields(room){
@@ -1187,10 +1325,10 @@ function finalizeShelfCraft(shelfSlot, recipe, isUpgrade, grantStageXp){
   if(isUpgrade){
     const tierName=getLogTierName(room.shelfTiers[shelfSlot]);
     craft.upgradeShelfSlot=null;
-    addActivityLog('wb-log','🗄️ Shelf slot '+shelfSlot+' upgraded to '+tierName+'! +'+recipe.xpComplete+' Carpentry', 'complete');
+    addActivityLog('wb-log','🗄️ Shelf slot '+shelfSlot+' upgraded to '+tierName+'! +'+recipe.xpComplete+' xp', 'complete');
     showToast('🗄️ Shelf upgraded to '+tierName+' (+50 capacity).');
   }else{
-    addActivityLog('wb-log','🗄️ Shelf slot '+shelfSlot+' installed! +'+recipe.xpComplete+' Carpentry', 'complete');
+    addActivityLog('wb-log','🗄️ Shelf slot '+shelfSlot+' installed! +'+recipe.xpComplete+' xp', 'complete');
     showToast('🗄️ Shelf installed. Storage capacity increased.');
   }
   stopCrafting(true);
@@ -1265,7 +1403,7 @@ function closeInteriorBuildMenu(){
 function buildInteriorFurnitureMenuItems(x,y){
   const items=listAvailableFurniture();
   if(!items.length){
-    return '<div class="store-line" style="padding:8px 4px;color:rgba(200,169,110,0.45)">No furniture in your bag or store room.</div>';
+    return '<div class="store-line" style="padding:8px 4px;color:rgba(200,169,110,0.45)">No furniture available.</div>';
   }
   return items.map(item=>{
     const stock=item.count===1?'1 available':item.count+' available';
@@ -1298,7 +1436,8 @@ function openInteriorBuildMenu(x,y){
       +'<span class="plot-add-item-name">'+def.name
       +'<span class="plot-add-item-drops">'+def.desc+'</span></span></button>';
   }).join('')
-  +buildApothecaryUtilityMenuItem(x,y);
+  +buildApothecaryUtilityMenuItem(x,y)
+  +buildWonkyLoomUtilityMenuItem(x,y);
   const furnitureHtml=buildInteriorFurnitureMenuItems(x,y);
   m.innerHTML='<div class="plot-add-title">FILL A SPACE</div>'
     +'<div class="plot-add-sub">Pick what belongs here. Duplicates are fine — go wild.</div>'
@@ -1371,7 +1510,7 @@ function placeInteriorFurniture(x,y, furnitureKey){
     return;
   }
   if(!consumeOneFromBagOrStore(furnitureKey)){
-    showToast('Could not take '+fdef.name+' from bag or store.');
+    showToast('Could not take '+fdef.name+'.');
     closeInteriorBuildMenu();
     return;
   }

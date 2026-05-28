@@ -35,6 +35,7 @@ function resetTransientUiState(){
   if(typeof closeFireplaceOverlay==='function') closeFireplaceOverlay();
   if(typeof closeSpinningWheelOverlay==='function') closeSpinningWheelOverlay();
   if(typeof closeApothecaryOverlay==='function') closeApothecaryOverlay();
+  if(typeof closeLoomOverlay==='function') closeLoomOverlay();
   if(typeof closeFurnitureOverlay==='function') closeFurnitureOverlay();
   if(typeof closeInteriorBuildMenu==='function') closeInteriorBuildMenu();
   if(typeof closePlotAddMenu==='function') closePlotAddMenu();
