@@ -135,7 +135,11 @@ function getBotanyItemDef(key){
   if(BOTANY_SEED_DEFS[key]) return BOTANY_SEED_DEFS[key];
   const crop=getBotanyCropDef(key);
   if(crop) return crop;
-  if(typeof getFabricItemDef==='function') return getFabricItemDef(key);
+  if(typeof getFabricItemDef==='function'){
+    const fabric=getFabricItemDef(key);
+    if(fabric) return fabric;
+  }
+  if(typeof getBagItemDef==='function') return getBagItemDef(key);
   return null;
 }
 

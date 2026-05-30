@@ -21,6 +21,7 @@ const LOOM_LINEN_LOCKED_MSG="You're going to need a better loom....";
 const LOOM_RECIPE_SECTIONS=[
   { label:'CLOTH', keys:['simple_cloth','silk_cloth','linen'] },
   { label:'BANDAGES', keys:['clean_bandage'] },
+  { label:'BAGS', keys:['scrappy_pouch'] },
 ];
 
 const LOOM_RECIPES={
@@ -76,10 +77,28 @@ const LOOM_RECIPES={
     xpSuccess:LOOM_WEAVE_XP_SUCCESS,
     xpFail:LOOM_WEAVE_XP_FAIL,
   },
+  scrappy_pouch:{
+    id:'scrappy_pouch',
+    label:'Scrappy Pouch',
+    icon:'👝',
+    outputKey:'scrappy_pouch',
+    inputs:[
+      { key:'simple_cloth', qty:2 },
+      { key:'thread_basic', qty:5 },
+    ],
+    requiredTailoringLevel:8,
+    baseSuccess:0.56,
+    xpSuccess:LOOM_WEAVE_XP_SUCCESS,
+    xpFail:LOOM_WEAVE_XP_FAIL,
+  },
 };
 
 function getFabricItemDef(key){
   return FABRIC_ITEMS[key]||null;
+}
+
+function getLoomOutputDef(key){
+  return getFabricItemDef(key)||(typeof getBagItemDef==='function'?getBagItemDef(key):null);
 }
 
 function getLoomRecipe(key){
@@ -96,32 +115,24 @@ function loomInputOptionKeys(inp){
 }
 
 function loomInputOptionIcon(opt){
-  const def=getFabricItemDef(opt.key)
-    ||getBotanyItemDef?.(opt.key)
-    ||FIBER_DEFS?.[opt.key]
-    ||THREAD_DEFS&&Object.values(THREAD_DEFS).find(t=>t.key===opt.key);
+  const def=typeof getCraftMaterialDef==='function'?getCraftMaterialDef(opt.key):null;
   return def?.icon||'?';
 }
 
 function loomInputOptionLabel(opt){
-  const def=getFabricItemDef(opt.key)
-    ||getBotanyItemDef?.(opt.key)
-    ||FIBER_DEFS?.[opt.key]
-    ||THREAD_DEFS&&Object.values(THREAD_DEFS).find(t=>t.key===opt.key);
+  const def=typeof getCraftMaterialDef==='function'?getCraftMaterialDef(opt.key):null;
   const name=def?.name||opt.key;
   const qty=Math.max(1, opt.qty||1);
   return name+' ×'+qty;
 }
 
 function loomInputMaterialName(opt){
-  const def=getFabricItemDef(opt.key)
-    ||getBotanyItemDef?.(opt.key)
-    ||FIBER_DEFS?.[opt.key]
-    ||THREAD_DEFS&&Object.values(THREAD_DEFS).find(t=>t.key===opt.key);
+  const def=typeof getCraftMaterialDef==='function'?getCraftMaterialDef(opt.key):null;
   return (def?.name||opt.key).toLowerCase();
 }
 
 function calcLoomSuccess(recipe, inputOpt){
+  if(recipe?.outputKey&&typeof BAG_BY_KEY!=='undefined'&&BAG_BY_KEY[recipe.outputKey]) return 1;
   if(inputOpt?.key==='thread_enhanced') return 1;
   const lvl=Number(state.skills.tailoring?.level)||1;
   const levelsAbove=Math.max(0,lvl-1);

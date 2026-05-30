@@ -40,12 +40,16 @@ function resolveWaterBodySurface(el){
 function pondMenuTap(event, surface){
   event?.stopPropagation();
   surface=surface||resolveWaterBodySurface(event?.target);
-  if(surface?.dataset?.instanceId) fish.pondInstanceId=surface.dataset.instanceId;
+  const pondId=typeof resolvePondInstanceIdFromSurface==='function'
+    ?resolvePondInstanceIdFromSurface(surface)
+    :surface?.dataset?.instanceId;
+  if(pondId) fish.pondInstanceId=pondId;
   notePondSeen();
   openFishingMenu();
 }
 
 function openFishingMenu(){
+  ensureFishingSpotSelected();
   showScreen('fishing-screen');
   lastHome='exterior-screen';
   renderFishing();
@@ -55,6 +59,15 @@ function closeFishing(){
   showScreen('exterior-screen');
   lastHome='exterior-screen';
   syncUI();
+}
+
+function ensureFishingSpotSelected(){
+  if(fish.pondInstanceId) return;
+  forEachPlotOccupied((x,y,slot)=>{
+    if(!fish.pondInstanceId&&getPlotTileDef(slot.typeId)?.behavior==='water'){
+      fish.pondInstanceId=slot.instanceId;
+    }
+  });
 }
 
 function renderFishAvailableList(bodyType){
@@ -106,6 +119,7 @@ function switchFishingSpot(pondInstanceId){
   if(!pondInstanceId) return;
   if(fish.pondInstanceId===pondInstanceId&&fish.running) return;
   const wasRunning=fish.running;
+  stopReleasingFish();
   if(fish.timer){ clearTimeout(fish.timer); fish.timer=null; }
   fish.pondInstanceId=pondInstanceId;
   if(wasRunning){
@@ -118,8 +132,55 @@ function switchFishingSpot(pondInstanceId){
   syncUI();
 }
 
+function getFishingActivitySkillKey(){
+  return fish.releasing?'water':'fishing';
+}
+
+function renderFishAutoReleaseToggle(){
+  const el=document.getElementById('fish-auto-release-toggle');
+  if(!el) return;
+  const pet=getEquippedGoldfishPet();
+  if(!pet){
+    el.hidden=true;
+    el.innerHTML='';
+    return;
+  }
+  el.hidden=false;
+  const pct=getGoldfishAutoReleaseChancePercent(getPetLevel(pet));
+  const on=!!state.fishAutoRelease;
+  el.innerHTML='<button type="button" class="store-shelf-action fish-auto-release-btn'+(on?' active':'')+'" style="width:100%" onclick="toggleFishAutoRelease()">'
+    +(on?'🐟 Auto-release: ON':'🐟 Auto-release: OFF')
+    +' · '+pct+'%</button>';
+}
+
+function toggleFishAutoRelease(){
+  if(!getEquippedGoldfishPet()){
+    state.fishAutoRelease=false;
+    renderFishAutoReleaseToggle();
+    return;
+  }
+  state.fishAutoRelease=!state.fishAutoRelease;
+  renderFishAutoReleaseToggle();
+  scheduleSaveGame();
+}
+
+function tryGoldfishAutoRelease(fishDef, bodyType){
+  if(!fishDef||!bodyType||!state.fishAutoRelease) return null;
+  const pet=getEquippedGoldfishPet();
+  if(!pet) return null;
+  const fishId=getFishIdForItemKey(fishDef.key);
+  if(!fishId||!getNativeFishIdsForBody(bodyType).includes(fishId)) return null;
+  const chance=getGoldfishAutoReleaseChancePercent(getPetLevel(pet))/100;
+  if(Math.random()>=chance) return null;
+  const waterXp=waterXpForFishRelease(bodyType);
+  grantXP('water', waterXp, null, { keepActivities:true });
+  flashSkillPill('water');
+  return waterXp;
+}
+
 function renderFishing(){
-  updateActivitySkillPill('fish', 'fishing');
+  ensureFishingSpotSelected();
+  updateActivitySkillPill('fish', getFishingActivitySkillKey());
   const body=getCurrentFishingWaterBody();
   const typeCfg=body?WATER_BODY_TYPES[body.type]:null;
   const titleEl=document.getElementById('fish-screen-title');
@@ -138,23 +199,33 @@ function renderFishing(){
   }
   if(iconEl) iconEl.textContent=body?.type==='ocean'?'🌊':body?.type==='river'?'🏞️':'🎣';
   renderFishAvailableList(body?.type);
+  renderFishAutoReleaseToggle();
   const status=document.getElementById('fish-status');
   if(status){
-    status.textContent=fish.running?'Fishing…':'Ready to fish';
-    status.classList.toggle('idle',!fish.running);
+    status.textContent=fish.releasing?'Releasing fish…':fish.running?'Fishing…':'Ready to fish';
+    status.classList.toggle('idle',!fish.running&&!fish.releasing);
     status.classList.remove('fish-status-blocked');
   }
   const btnEl=document.getElementById('fish-buttons');
   if(!btnEl) return;
-  if(fish.running){
-    btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns"><button class="wb-btn stop" onclick="stopFishing()">⛔ STOP FISHING</button></div></div>';
+  const spotReady=!!body;
+  const full=invTotal()>=getInvCap();
+  let releaseBtn;
+  if(fish.releasing){
+    releaseBtn='<button class="wb-btn stop" style="flex:1" onclick="stopReleasingFish(); renderFishing(); syncUI();">⛔ STOP RELEASING</button>';
   }else{
-    const full=invTotal()>=INV_CAP;
-    const spotReady=!!body;
+    const releaseDisabled=!spotReady;
+    releaseBtn='<button class="wb-btn stop" style="flex:1" '+(releaseDisabled?'disabled':'')+' onclick="startReleasingFish()">🐟 RELEASE FISH</button>';
+  }
+  if(fish.running){
     btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
-      +'<button class="wb-btn once" '+(full||!spotReady?'disabled':'')+' onclick="startFishing()">'
-      +'🎣 START FISHING<span class="wb-btn-sub">'+(spotReady?'cast a line':'pick a water spot first')+'</span></button>'
-      +'</div></div>';
+      +'<button class="wb-btn stop" style="flex:1" onclick="stopFishing()">⛔ STOP FISHING</button>'
+      +releaseBtn+'</div></div>';
+  }else{
+    btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
+      +'<button class="wb-btn stop" style="flex:1" '+(!spotReady||(!fish.releasing&&full)?'disabled':'')+' onclick="startFishing()">'
+      +'🎣 START FISHING</button>'
+      +releaseBtn+'</div></div>';
   }
 }
 
@@ -163,7 +234,8 @@ function startFishing(pondInstanceId){
     if(pondInstanceId&&pondInstanceId!==fish.pondInstanceId) switchFishingSpot(pondInstanceId);
     return;
   }
-  if(invTotal()>=INV_CAP){ showToast('Bag is full — make room for fish.'); return; }
+  if(fish.releasing) stopReleasingFish();
+  if(invTotal()>=getInvCap()){ showToast('Bag is full — make room for fish.'); return; }
   if(pondInstanceId) fish.pondInstanceId=pondInstanceId;
   else if(!fish.pondInstanceId){
     let firstPondId=null;
@@ -179,31 +251,145 @@ function startFishing(pondInstanceId){
   runNextFishAttempt();
 }
 
-function stopFishing(fromActivitySwitch){
+function pauseFishingTimer(){
+  if(!fish.running&&!fish.timer) return;
   fish.running=false;
-  fish.pondInstanceId=null;
   clearTimeout(fish.timer);
   fish.timer=null;
-  if(!fromActivitySwitch) clearActivity('fishing');
+  clearActivity('fishing');
+  if(typeof updatePondCell==='function') updatePondCell();
+}
+
+function stopFishing(fromActivitySwitch){
+  stopReleasingFish();
+  pauseFishingTimer();
   if(currentScreen==='fishing-screen') renderFishing();
   syncUI();
 }
 
+function stopReleasingFish(){
+  fish.releasing=false;
+  fish.releaseQueue=[];
+  clearTimeout(fish.releaseTimer);
+  fish.releaseTimer=null;
+  fishReleaseLogBatch=null;
+}
+
+let fishReleaseLogBatch=null;
+
+function resetFishReleaseLogBatch(){
+  fishReleaseLogBatch=null;
+}
+
+function formatFishReleaseLogText(batch){
+  const fishLine=(batch.totalFishXp>0)?(', +'+batch.totalFishXp+' Fishing'):'';
+  const verb=batch.totalFishXp>0?'Caught & auto-released':'Released';
+  if(batch.count===1){
+    return batch.icon+' '+verb+' '+batch.name+'. +'+batch.totalXp+' water'+fishLine+'.';
+  }
+  return batch.icon+' '+verb+' '+batch.count+' '+batch.name+'. +'+batch.totalXp+' water ('+batch.xpEach+' each)'+fishLine+'.';
+}
+
+function recordFishReleaseLog(fishId, fishDef, waterXp, fishingXp){
+  const name=(fishDef?.name||'fish').toLowerCase();
+  const icon=fishDef?.icon||'🐟';
+  const log=document.getElementById('fish-log');
+  if(!log) return;
+  const fishGain=Math.max(0, Number(fishingXp)||0);
+  if(!fishReleaseLogBatch||fishReleaseLogBatch.fishId!==fishId){
+    log.querySelector('.wb-log-entry.latest')?.classList.remove('latest');
+    const entry=addActivityLog('fish-log', formatFishReleaseLogText({
+      fishId, name, icon, count:1, totalXp:waterXp, xpEach:waterXp, totalFishXp:fishGain,
+    }), 'success');
+    fishReleaseLogBatch={ fishId, name, icon, count:1, totalXp:waterXp, xpEach:waterXp, totalFishXp:fishGain, entryEl:entry };
+    return;
+  }
+  fishReleaseLogBatch.count++;
+  fishReleaseLogBatch.totalXp+=waterXp;
+  fishReleaseLogBatch.totalFishXp+=fishGain;
+  updateActivityLogEntry(fishReleaseLogBatch.entryEl, formatFishReleaseLogText(fishReleaseLogBatch), 'success');
+}
+
+function buildFishReleaseQueue(bodyType){
+  const nativeIds=new Set(getNativeFishIdsForBody(bodyType));
+  const queue=[];
+  Object.entries(state.inventory).forEach(([itemKey,item])=>{
+    if(!item?.count) return;
+    const fishId=getFishIdForItemKey(itemKey);
+    if(!fishId||!nativeIds.has(fishId)) return;
+    for(let i=0;i<item.count;i++){
+      queue.push({ itemKey, fishId, icon:item.icon, name:item.name });
+    }
+  });
+  return queue;
+}
+
+function startReleasingFish(){
+  if(fish.releasing) return;
+  pauseFishingTimer();
+  ensureFishingSpotSelected();
+  const body=getCurrentFishingWaterBody();
+  if(!body?.type){
+    showToast('Pick a water spot first.');
+    return;
+  }
+  fish.releaseQueue=buildFishReleaseQueue(body.type);
+  if(!fish.releaseQueue.length){
+    showToast('Nothing in your inventory looks like it would be very happy here...');
+    return;
+  }
+  fish.releasing=true;
+  resetFishReleaseLogBatch();
+  renderFishing();
+  releaseNextFish();
+}
+
+function releaseNextFish(){
+  if(!fish.releasing) return;
+  const body=getCurrentFishingWaterBody();
+  if(!body?.type||currentScreen!=='fishing-screen'){
+    stopReleasingFish();
+    if(currentScreen==='fishing-screen') renderFishing();
+    return;
+  }
+  if(!fish.releaseQueue.length){
+    stopReleasingFish();
+    if(currentScreen==='fishing-screen') renderFishing();
+    syncUI();
+    return;
+  }
+  const next=fish.releaseQueue.shift();
+  if(!consumeOneFromBag(next.itemKey)){
+    fish.releaseTimer=setTimeout(releaseNextFish, FISH_RELEASE_MS);
+    return;
+  }
+  const waterXp=waterXpForFishRelease(body.type);
+  grantXP('water', waterXp, null, { keepActivities:true });
+  flashSkillPill('water');
+  const fishDef=FISH_DEFS[next.fishId];
+  recordFishReleaseLog(next.fishId, fishDef, waterXp);
+  syncUI();
+  fish.releaseTimer=setTimeout(releaseNextFish, FISH_RELEASE_MS);
+}
+
 function runNextFishAttempt(){
   if(!fish.running) return;
-  if(invTotal()>=INV_CAP){
+  if(invTotal()>=getInvCap()){
     stopFishing();
     showToast('Bag full. Fishing stopped.');
     return;
   }
   fishAttempt();
+  if(!fish.running) return;
   fish.timer=setTimeout(runNextFishAttempt,ACTION_TICK_MS);
 }
 
 function fishAttempt(){
+  if(!fish.running) return;
   const body=getCurrentFishingWaterBody();
   const typeCfg=body?WATER_BODY_TYPES[body.type]:WATER_BODY_TYPES.pond;
   state.fishAttempts++;
+  grantXP('water', FISH_ATTEMPT_WATER_XP, null, { keepActivities:true });
   if(body&&!canFishAtBody(body.type)){
     if(tryUnderlevelFishLump(body.type)){
       syncUI();
@@ -223,6 +409,16 @@ function fishAttempt(){
   const fishDef=body?rollFishForBody(body.type):null;
   const success=fishDef&&Math.random()<typeCfg.successRate;
   if(success){
+    const waterXp=body&&tryGoldfishAutoRelease(fishDef, body.type);
+    if(waterXp!=null){
+      state.fishCatches++;
+      grantXP('fishing',typeCfg.xpCatch,null);
+      const fishId=getFishIdForItemKey(fishDef.key);
+      recordFishReleaseLog(fishId, fishDef, waterXp, typeCfg.xpCatch);
+      if(state.fishCatches===1) showToast('First catch! '+fishDef.icon+' (released)');
+      syncUI();
+      return;
+    }
     const added=invAdd(fishDef.key,fishDef.icon,'Raw '+fishDef.name,1);
     if(!added){
       stopFishing();
@@ -312,12 +508,10 @@ function renderGatherLootList(gatherKey){
     list.innerHTML='<div class="store-line" style="color:rgba(200,169,110,0.45)">Select a gathering spot.</div>';
     return;
   }
-  const loc=getGatheringByKey(gatherKey);
-  list.innerHTML=loc.drops.map(d=>{
-    const pct=Math.round((d.weight/loc.drops.reduce((s,x)=>s+x.weight,0))*100);
+  list.innerHTML=sortedGatheringDrops(gatherKey).map(d=>{
     return '<div class="fish-list-row">'
       +'<span>'+d.icon+' '+d.name+(d.rare?'<span class="fish-rarity">Rare</span>':'')+'</span>'
-      +'<span class="fish-req">~'+pct+'% of finds</span>'
+      +'<span class="fish-req">~'+d.pct+'% of finds</span>'
       +'</div>';
   }).join('');
 }
@@ -348,11 +542,11 @@ function renderGathering(){
   }
   const status=document.getElementById('gather-status');
   if(status){
-    const invFull=invTotal()>=INV_CAP;
+    const invFull=invTotal()>=getInvCap();
     if(gather.running){
       status.textContent='Gathering… '+gather.itemsThisSession+' / '+GATHER_ITEMS_PER_SESSION+' found this visit';
     }else if(invFull){
-      status.textContent='Bag full ('+invTotal()+'/'+INV_CAP+') — make room before foraging';
+      status.textContent='Bag full ('+invTotal()+'/'+getInvCap()+') — make room before foraging';
     }else{
       status.textContent='Ready to gather';
     }
@@ -364,7 +558,7 @@ function renderGathering(){
     btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns"><button class="wb-btn stop" onclick="stopGathering()">⛔ STOP GATHERING</button></div></div>';
     return;
   }
-  const full=invTotal()>=INV_CAP;
+  const full=invTotal()>=getInvCap();
   const spotReady=!!loc;
   btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
     +'<button class="wb-btn once" '+(full||!spotReady?'disabled':'')+' onclick="startGathering()">'
@@ -396,8 +590,8 @@ function startGathering(instanceId){
     if(instanceId&&instanceId!==gather.instanceId) switchGatheringSpot(instanceId);
     return;
   }
-  if(invTotal()>=INV_CAP){
-    showToast('Bag full ('+INV_CAP+'/'+INV_CAP+') — make room before foraging.');
+  if(invTotal()>=getInvCap()){
+    showToast('Bag full ('+invTotal()+'/'+getInvCap()+') — make room before foraging.');
     return;
   }
   if(instanceId) gather.instanceId=instanceId;
@@ -428,7 +622,7 @@ function stopGathering(fromActivitySwitch){
 
 function runNextGatherAttempt(){
   if(!gather.running) return;
-  if(invTotal()>=INV_CAP){
+  if(invTotal()>=getInvCap()){
     stopGathering();
     showToast('Bag full. Gathering stopped.');
     return;
@@ -619,11 +813,11 @@ function renderMining(){
   renderMineLootList(spot?.def?.mineId);
   const status=document.getElementById('mine-status');
   if(status){
-    const invFull=invTotal()>=INV_CAP;
+    const invFull=invTotal()>=getInvCap();
     if(mine.running){
       status.textContent='Mining… '+mine.stacks+'/'+getMineMaxStacks()+' stacked';
     }else if(invFull){
-      status.textContent='Bag full ('+invTotal()+'/'+INV_CAP+') — make room before mining';
+      status.textContent='Bag full ('+invTotal()+'/'+getInvCap()+') — make room before mining';
     }else if(mine.stacks>0){
       status.textContent=mine.stacks+'/'+getMineMaxStacks()+' stacked — swing or start mining';
     }else{
@@ -637,7 +831,7 @@ function renderMining(){
   const stackFull=mine.stacks>=maxStacks;
   const stackLabel=mine.stacks+'/'+maxStacks;
   const spotReady=!!spot;
-  const full=invTotal()>=INV_CAP;
+  const full=invTotal()>=getInvCap();
   const hasStacks=mine.stacks>0;
   if(mine.running){
     btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
@@ -696,9 +890,9 @@ function ensureMiningLoop(){
     if(mine.running) stopMining(true);
     return;
   }
-  if(invTotal()>=INV_CAP){
+  if(invTotal()>=getInvCap()){
     if(mine.running) stopMining();
-    showToast('Bag full ('+INV_CAP+'/'+INV_CAP+') — make room before mining.');
+    showToast('Bag full ('+invTotal()+'/'+getInvCap()+') — make room before mining.');
     return;
   }
   if(!mine.running){
@@ -717,8 +911,8 @@ function startMining(instanceId){
   }
   if(!mine.instanceId){ showToast('Build a quarry first.'); return; }
   if(mine.stacks<=0){ showToast('Tap the quarry to stack mining attempts first.'); return; }
-  if(invTotal()>=INV_CAP){
-    showToast('Bag full ('+INV_CAP+'/'+INV_CAP+') — make room before mining.');
+  if(invTotal()>=getInvCap()){
+    showToast('Bag full ('+invTotal()+'/'+getInvCap()+') — make room before mining.');
     return;
   }
   setActivity('mining');
@@ -746,7 +940,7 @@ function runNextMineAttempt(){
     showToast('All stacks spent — tap the quarry to queue more attempts.');
     return;
   }
-  if(invTotal()>=INV_CAP){
+  if(invTotal()>=getInvCap()){
     stopMining();
     showToast('Bag full. Mining stopped.');
     return;
@@ -910,13 +1104,13 @@ function renderWoodcutting(){
     if(!woodland) status.textContent='Select a woodland on your plot';
     else if(!state.axeFound) status.textContent='Find an axe in the hut first';
     else if(!hasAxeAvailable()) status.textContent='Equip an axe to chop';
-    else if(invTotal()>=INV_CAP) status.textContent='Bag full — make room for logs';
+    else if(invTotal()>=getInvCap()) status.textContent='Bag full — make room for logs';
     else status.textContent='Tap the tree to chop';
     status.classList.add('idle');
   }
   const btnEl=document.getElementById('wc-buttons');
   if(btnEl){
-    const full=invTotal()>=INV_CAP;
+    const full=invTotal()>=getInvCap();
     const canChop=!!woodland&&state.axeFound&&hasAxeAvailable()&&!full;
     btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
       +'<button class="wb-btn once" style="flex:1" '+(canChop?'':'disabled')+' onclick="wcMenuChop()">'
@@ -976,6 +1170,17 @@ function ensureExpeditionHealingRequired(tierKey){
     scheduleSaveGame();
   }
   return state.exploreHealingRolls[tierKey];
+}
+
+function ensureExpeditionTorchRequired(tierKey){
+  if(!state.exploreTorchRolls) state.exploreTorchRolls={};
+  const tier=getExpeditionTier(tierKey);
+  if(!expeditionSlotNeeded(tier, 'torch')) return 0;
+  if(state.exploreTorchRolls[tierKey]==null){
+    state.exploreTorchRolls[tierKey]=rollExpeditionTorchesRequired(tierKey);
+    scheduleSaveGame();
+  }
+  return state.exploreTorchRolls[tierKey];
 }
 
 function selectExpeditionTier(key){
@@ -1141,7 +1346,10 @@ function planExpeditionMedicine(required, focusMedicineKey){
 }
 
 function getAvailableExpeditionTorches(){
-  return [];
+  const def=getSimpleTorchDef();
+  const count=itemCountBagAndStore(SIMPLE_TORCH_KEY);
+  if(count<1) return [];
+  return [{ key:SIMPLE_TORCH_KEY, icon:def.icon, name:def.name, count }];
 }
 
 function countExpeditionSupply(slotKey){
@@ -1158,14 +1366,16 @@ function expeditionSuppliesReady(tier, staminaPlan, medicinePlan){
       if(!medicinePlan.sufficient) return { ready:false, reason:'medicine' };
       return { ready:true };
     }
-    if(countExpeditionSupply('torch')<1) return { ready:false, reason:'torch' };
+    const torchNeed=ensureExpeditionTorchRequired(tier.key);
+    if(countExpeditionSupply('torch')<torchNeed) return { ready:false, reason:'torch' };
     return { ready:true };
   }
   if(expeditionMedicineRequired(tier) && !medicinePlan.sufficient){
     return { ready:false, reason:'medicine' };
   }
-  if(expeditionTorchRequired(tier) && countExpeditionSupply('torch')<1){
-    return { ready:false, reason:'torch' };
+  if(expeditionTorchRequired(tier)){
+    const torchNeed=ensureExpeditionTorchRequired(tier.key);
+    if(countExpeditionSupply('torch')<torchNeed) return { ready:false, reason:'torch' };
   }
   return { ready:true };
 }
@@ -1183,7 +1393,13 @@ function expeditionReadyStatusText(tier, staminaPlan, medicinePlan, supplies){
     if(!getAvailableExpeditionMedicine().length) return 'Craft bandages for medicine supplies';
     return 'Need '+(medicinePlan.required-medicinePlan.totalAvailable)+' more recovery from medicine';
   }
-  if(supplies.reason==='torch') return 'Pack a torch for this expedition';
+  if(supplies.reason==='torch'){
+    const need=ensureExpeditionTorchRequired(tier.key);
+    const have=countExpeditionSupply('torch');
+    if(!getAvailableExpeditionTorches().length) return 'Light torches at the fire pit (Light tab)';
+    if(have<need) return 'Need '+(need-have)+' more torch'+(need-have===1?'':'es')+' packed';
+    return 'Pack torches for this expedition';
+  }
   return 'Pack the required supplies';
 }
 
@@ -1192,7 +1408,12 @@ function expeditionStartBtnSub(tier, staminaPlan, medicinePlan, supplies){
   if(supplies.ready) return 'depart when ready';
   if(supplies.reason==='either') return 'pick medicine or a torch';
   if(supplies.reason==='medicine') return 'pack enough medicine for recovery';
-  if(supplies.reason==='torch') return 'need a torch packed';
+  if(supplies.reason==='torch'){
+    const need=ensureExpeditionTorchRequired(tier.key);
+    const have=countExpeditionSupply('torch');
+    if(have<need) return 'need '+need+' torch'+(need===1?'':'es')+' packed';
+    return 'need torches packed';
+  }
   return 'complete supply checks first';
 }
 
@@ -1353,22 +1574,26 @@ function renderExpeditionReqBox(slotKey, tier, opts){
   }
   if(slotKey==='medicine' && opts?.medicinePlan){
     const medicinePlan=opts.medicinePlan;
+    const medicineNeeded=!!opts?.medicineNeeded;
+    const unneeded=!medicineNeeded;
     const medicineCls=staminaStockClass(medicinePlan.totalAvailable, medicinePlan.required);
-    const qtyHtml=opts?.medicineNeeded
+    const qtyHtml=medicineNeeded
       ?'<span class="expedition-req-qty '+medicineCls+'">'+medicinePlan.totalAvailable+'/'+medicinePlan.required+'</span>'
       :'<span class="expedition-req-na">not needed</span>';
-    return '<button type="button" class="expedition-req-box clickable'+openCls+selectedCls+dimCls+'" onclick="toggleExploreReqSubmenu(\'medicine\', event)">'
+    return '<button type="button" class="expedition-req-box clickable'+openCls+selectedCls+dimCls+(unneeded?' unneeded':'')+'" onclick="toggleExploreReqSubmenu(\'medicine\', event)">'
       +'<span class="expedition-req-icon">'+slot.icon+'</span>'
       +'<span class="expedition-req-label">'+slot.label+'</span>'
       +qtyHtml
       +'</button>';
   }
   if(slotKey==='torch'){
-    const label=expeditionSlotQtyLabel(tier, slotKey);
-    const unneeded=!label;
+    const torchNeeded=expeditionTorchRequired(tier);
+    const required=torchNeeded?ensureExpeditionTorchRequired(tier.key):0;
+    const available=countExpeditionSupply('torch');
+    const unneeded=!torchNeeded;
     const qtyHtml=unneeded
       ?'<span class="expedition-req-na">not needed</span>'
-      :'<span class="expedition-req-qty">×'+(label?.qty||1)+'</span>';
+      :'<span class="expedition-req-qty '+staminaStockClass(available, required)+'">'+available+'/'+required+'</span>';
     return '<button type="button" class="expedition-req-box clickable'+openCls+selectedCls+dimCls+(unneeded?' unneeded':'')+'" onclick="toggleExploreReqSubmenu(\'torch\', event)">'
       +'<span class="expedition-req-icon">'+slot.icon+'</span>'
       +'<span class="expedition-req-label">'+slot.label+'</span>'
@@ -1453,9 +1678,27 @@ function renderExploreReqSubmenu(tier, staminaPlan, medicinePlan){
     return;
   }
   if(key==='torch'){
-    el.innerHTML='<div class="explore-req-submenu-title">TORCH</div>'
-      +'<div class="explore-req-submenu-sub">'+slot.submenuTitle+'</div>'
-      +'<div class="store-line" style="color:rgba(200,169,110,0.45);padding:4px 0">No torch items yet.</div>';
+    const required=expeditionTorchRequired(tier)?ensureExpeditionTorchRequired(tier.key):0;
+    const available=countExpeditionSupply('torch');
+    const totalCls=staminaStockClass(available, required);
+    const torches=getAvailableExpeditionTorches();
+    let html='<div class="explore-req-submenu-title">TORCH</div>'
+      +'<div class="explore-req-submenu-sub">'+slot.submenuTitle+' • simple torches from the fire pit</div>';
+    if(!required){
+      html+='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:4px 0">Not needed for this expedition.</div>';
+    }else{
+      html+='<div class="explore-req-submenu-summary '+totalCls+'"><span class="stamina-val">'+available+'/'+required+'</span> torches packed</div>';
+      if(!torches.length){
+        html+='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:6px 0 2px">No torches available • craft at the fire pit (Light tab).</div>';
+      }else{
+        html+='<div class="explore-req-submenu-section">AVAILABLE</div>';
+        html+=torches.map(item=>'<div class="explore-req-submenu-item static">'
+          +'<span>'+item.icon+' '+item.name+'</span>'
+          +'<span class="explore-req-submenu-meta">'+item.count+' in bag or storage</span>'
+          +'</div>').join('');
+      }
+    }
+    el.innerHTML=html;
   }
 }
 
@@ -1568,16 +1811,15 @@ function consumeExpeditionMedicinePlan(medicinePlan){
 
 function consumeExpeditionOtherSupplies(tier){
   if(expeditionRequiresEither(tier)){
-    if(explore.eitherChoice==='torch' && countExpeditionSupply('torch')>=1){
-      consumeOneFromBagOrStore('torch');
+    if(explore.eitherChoice==='torch'){
+      const need=ensureExpeditionTorchRequired(tier.key);
+      if(need>0) consumeManyFromBagOrStore(SIMPLE_TORCH_KEY, need);
     }
     return;
   }
   if(expeditionTorchRequired(tier)){
-    for(let n=0;n<(tier.requirements?.torch||0);n++){
-      if(countExpeditionSupply('torch')<1) break;
-      consumeOneFromBagOrStore('torch');
-    }
+    const need=ensureExpeditionTorchRequired(tier.key);
+    if(need>0) consumeManyFromBagOrStore(SIMPLE_TORCH_KEY, need);
   }
 }
 
@@ -1822,7 +2064,7 @@ function startExpedition(){
     if(supplies.reason==='rations') showToast('Not enough rations packed for this expedition.');
     else if(supplies.reason==='either') showToast('Pick medicine or a torch for this expedition.');
     else if(supplies.reason==='medicine') showToast('Not enough medicine packed for this expedition.');
-    else showToast('Pack a torch for this expedition.');
+    else showToast('Not enough torches packed for this expedition.');
     renderExploring();
     return;
   }

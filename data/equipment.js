@@ -28,4 +28,19 @@ const AXE_DEFS = [
   { tier:7, key:'axe_7',  icon:'🪓', name:'Axe7' },
 ];
 const AXE_BY_KEY = Object.fromEntries(AXE_DEFS.map(a=>[a.key,a]));
-const EQUIPPABLE = Object.fromEntries(AXE_DEFS.map(a=>[a.key,{ icon:a.icon, name:a.name, tier:a.tier }]));
+const EQUIPPABLE = Object.fromEntries(AXE_DEFS.map(a=>[a.key,{ icon:a.icon, name:a.name, tier:a.tier, slot:'tool' }]));
+
+const BAG_DEFS = [
+  { key:'scrappy_pouch', icon:'👝', name:'Scrappy Pouch', invBonus:10 },
+];
+const BAG_BY_KEY = Object.fromEntries(BAG_DEFS.map(b=>[b.key,b]));
+
+function getBagItemDef(key){
+  return BAG_BY_KEY[key]||null;
+}
+
+function getEquippedBagBonus(){
+  const key=state?.equippedBag?.key;
+  if(!key) return 0;
+  return BAG_BY_KEY[key]?.invBonus||state.equippedBag.invBonus||0;
+}

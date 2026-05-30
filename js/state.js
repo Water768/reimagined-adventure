@@ -8,6 +8,7 @@ function getDefaultState(){
     dogBedCleaned:0, fireplaceStokes:0, logsOnFire:0,
     inventory:{},
     equipped:null,
+    equippedBag:null,
     skills:{
       woodcut:{xp:0,level:1,xpToNext:100},
       foraging:{xp:0,level:1,xpToNext:100},
@@ -32,6 +33,7 @@ function getDefaultState(){
     storeRooms:{},
     purgedStoreRoomIds:[],
     fishAttempts:0, fishCatches:0,
+    fishAutoRelease:false,
     fireplaceQuickAction:'cook',
     firePitQuickAction:'cook',
     plotLayout:null, plot:{ cells:null, editMode:false, panX:0, panY:0 }, plotConfigs:{},
@@ -46,17 +48,30 @@ function getDefaultState(){
     _seenArchitectureLv2:false,
     exploreStaminaRolls:{},
     exploreHealingRolls:{},
+    exploreTorchRolls:{},
     wellUnlocked:false,
     wellFinishedUnlocked:false,
+    wellHydratedUnlocked:false,
+    wellQuickAction:'fill',
     firePitUnlocked:false,
+    kilnUnlocked:false,
+    kilnLitUnlocked:false,
+    kilnLastAction:null,
     _archRoomBonuses:{},
     _archRoomBonusesMigrated:false,
+    _structureCompleteBonuses:{},
+    _structureCompleteBonusMigrated:false,
     _saveVersion:0,
   };
 }
 const state = getDefaultState();
 
 function invTotal(){ return Object.values(state.inventory).reduce((s,i)=>s+i.count,0); }
+
+function getInvCap(){
+  const bonus=typeof getEquippedBagBonus==='function'?getEquippedBagBonus():0;
+  return INV_BASE_CAP+bonus;
+}
 
 function storageAddDirect(key,icon,name,n){
   if(n<=0) return 0;
@@ -106,7 +121,7 @@ function invAdd(key,icon,name,n){
     notifyDogStorageFetch(split.pet, icon, split.toStorage);
   }
   if(split.toBag<=0) return split.toStorage;
-  const space=INV_CAP-invTotal();
+  const space=getInvCap()-invTotal();
   if(space<=0) return split.toStorage;
   const add=Math.min(split.toBag,space);
   if(!state.inventory[key]) state.inventory[key]={icon,name,count:0};
@@ -184,6 +199,36 @@ function equipAxeDef(def){
   return true;
 }
 
+function findBagInBag(){
+  for(let i=BAG_DEFS.length-1;i>=0;i--){
+    const b=BAG_DEFS[i];
+    if((state.inventory[b.key]?.count||0)>0) return b;
+  }
+  return null;
+}
+
+function equipBagDef(def){
+  if(!def || !(state.inventory[def.key]?.count > 0)) return false;
+  if(state.equippedBag){
+    const prev=state.equippedBag;
+    invAddDirect(prev.key, prev.icon, prev.name, 1);
+    state.equippedBag=null;
+  }
+  state.inventory[def.key].count--;
+  if(!state.inventory[def.key].count) delete state.inventory[def.key];
+  state.equippedBag={ key:def.key, icon:def.icon, name:def.name, invBonus:def.invBonus };
+  return true;
+}
+
+function migrateEquippedBag(){
+  if(!state.equippedBag) return;
+  const def=BAG_BY_KEY[state.equippedBag.key];
+  if(!def){ state.equippedBag=null; return; }
+  if(state.equippedBag.invBonus==null) state.equippedBag.invBonus=def.invBonus;
+  state.equippedBag.icon=def.icon;
+  state.equippedBag.name=def.name;
+}
+
 
 function itemCountBagAndStore(key, opts){
   opts=opts||{};
@@ -216,6 +261,15 @@ function grantNailToStorage(nailKey){
   if(!def||def.infinite) return false;
   if(!state.storage[nailKey]) state.storage[nailKey]={ icon:def.icon, name:def.name, count:0 };
   state.storage[nailKey].count++;
+  return true;
+}
+
+function consumeOneFromBag(key){
+  const inv=state.inventory[key];
+  if(!inv?.count) return false;
+  inv.count--;
+  if(!inv.count) delete state.inventory[key];
+  scheduleSaveGame();
   return true;
 }
 
@@ -282,7 +336,7 @@ function wonkyLoomInStock(){
 }
 
 function returnOneToBagOrStore(key, icon, name){
-  if(invTotal()<INV_CAP){
+  if(invTotal()<getInvCap()){
     invAddDirect(key, icon, name, 1);
     return 'bag';
   }
@@ -392,7 +446,7 @@ function createPet(type){
     type:def.key,
     name:names[Math.floor(Math.random()*names.length)],
     tier:getPetSpeciesTier(def),
-    shard:def.passiveType==='shard'?rollPetShard():null,
+    shard:def.fixedShard||(def.passiveType==='shard'?rollPetShard():null),
     level:1,
     exp:0,
     birthday:now,
@@ -431,14 +485,14 @@ function getCookBlockReason(recipe){
 
 function canStoreCookedResult(recipe){
   if((state.inventory[recipe.rawKey]?.count||0)>0) return true;
-  return invTotal()<INV_CAP;
+  return invTotal()<getInvCap();
 }
 
 /** Take one raw ingredient for cooking — bag first; storage only if bag has room for the result. */
 function consumeRawForCook(recipe){
   const key=recipe.rawKey;
   if((state.inventory[key]?.count||0)>0) return consumeOneFromBagOrStore(key);
-  if(invTotal()>=INV_CAP) return false;
+  if(invTotal()>=getInvCap()) return false;
   return consumeOneFromBagOrStore(key);
 }
 
@@ -458,7 +512,7 @@ function canSpinRecipe(recipe){
 
 function canStoreSpinResult(recipe){
   if((state.inventory[recipe.rawKey]?.count||0)>0) return true;
-  return invTotal()<INV_CAP;
+  return invTotal()<getInvCap();
 }
 
 function tryShardDrop(skill){
@@ -517,7 +571,7 @@ function getTotalSkillXp(key){
 
 function formatSkillXp(n){ return Number(n).toLocaleString(); }
 
-const fish={ running:false, timer:null, pondInstanceId:null };
+const fish={ running:false, timer:null, pondInstanceId:null, releasing:false, releaseTimer:null, releaseQueue:[] };
 const gather={ running:false, timer:null, instanceId:null, itemsThisSession:0 };
 const wc={ treeInstanceId:null };
 const mine={ running:false, timer:null, instanceId:null, stacks:0 };
@@ -528,6 +582,7 @@ const cook={ running:false, timer:null, recipeKey:'goldfish' };
 const spin={ running:false, timer:null, recipeKey:'twisted_grass' };
 const apothProcess={ running:false, timer:null };
 const loomProcess={ running:false, timer:null };
+const kilnProcess={ running:false, timer:null };
 const activity={ type:null };
 let skillFlashKey=null;
 let skillFlashTimer=null;
@@ -554,7 +609,7 @@ function flashSkillPill(skillKey){
 function activityLabel(type){
   const r=getActivityRunner(type);
   if(r?.label) return r.label;
-  return type==='fishing'?'Fishing':type==='gathering'?'Gathering':type==='woodcutting'?'Woodcutting':type==='mining'?'Mining':type==='crafting'?'Workbench':type==='cooking'?'Cooking':type==='spinning'?'Spinning':type==='loom'?'Weaving':type==='apothecary'?'Processing':type==='exploring'?'Exploring':'';
+  return type==='fishing'?'Fishing':type==='gathering'?'Gathering':type==='woodcutting'?'Woodcutting':type==='mining'?'Mining':type==='crafting'?'Workbench':type==='cooking'?'Cooking':type==='spinning'?'Spinning':type==='loom'?'Weaving':type==='apothecary'?'Processing':type==='kiln'?'Blowing':type==='exploring'?'Exploring':'';
 }
 
 const ACTIVITY_SKILL_KEYS={

@@ -102,3 +102,20 @@ function firePitShardsForFurniture(furnitureKey){
   const tier=recipe?.tier||'simple';
   return FIRE_PIT_FURNITURE_SHARDS[tier]||1;
 }
+
+const SIMPLE_TORCH_KEY='simple_torch';
+const SIMPLE_TORCH_DEF={ key:SIMPLE_TORCH_KEY, icon:'🔥', name:'Simple Torch' };
+const TORCH_SIMPLE_LOG_COST=100;
+const TORCH_FIRE_LEVEL_REQUIRED=5;
+
+function getSimpleTorchDef(){
+  return SIMPLE_TORCH_DEF;
+}
+
+function getSimpleTierLogKeys(){
+  return (FURNITURE_TIER_WOODS.simple||['logs']).slice();
+}
+
+function getFireSkillLevel(){
+  return Number(state?.skills?.fire?.level)||1;
+}

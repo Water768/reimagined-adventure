@@ -877,7 +877,7 @@ body {
 .water-body-surface .plot-activity-top {
   position:absolute; top:0; left:0; right:0; height:66%;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  pointer-events:none; overflow:hidden;
+  cursor:pointer; overflow:hidden;
 }
 .water-body-surface .pond-sprite {
   position:relative; z-index:3;
@@ -958,7 +958,24 @@ body {
   box-shadow:none !important;
   pointer-events:none;
 }
-.plot-edit-mode .cell-water-base { pointer-events:auto; cursor:grab; }
+.plot-edit-mode .cell-water-base {
+  pointer-events:auto; cursor:grab;
+  background:linear-gradient(180deg,#1e3448 0%,#142830 100%) !important;
+  border-color:rgba(56, 88, 140, 0.55) !important;
+}
+.cell-water-base .water-edit-top { overflow:hidden; height:100%; border-bottom:none; }
+.cell-water-base .water-edit-sprite {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  width:100%; height:100%; pointer-events:none;
+}
+.cell-water-base .water-edit-icon {
+  font-size:34px; line-height:1; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.45));
+}
+.cell-water-base .water-edit-label {
+  font-family:var(--font-ui); font-size:10px; font-weight:600;
+  color:rgba(180,220,255,0.88); text-align:center; margin-top:4px;
+  letter-spacing:0.04em; text-shadow:0 1px 3px rgba(0,0,0,0.55);
+}
 .water-body-surface {
   position:absolute; z-index:1;
   border:2px solid rgba(56, 88, 140, 0.75);
@@ -1687,6 +1704,31 @@ body {
 .cell-well.well-built .well-icon,
 .cell-well.well-complete .well-icon { font-size:38px; }
 .cell-well.well-equipped .well-icon { font-size:40px; }
+.cell-well.well-hydrated {
+  border-color:rgba(56, 88, 140, 0.75) !important;
+  box-shadow:inset 0 0 16px rgba(0, 40, 80, 0.22);
+}
+.cell-well.well-hydrated .well-label { color:rgba(180,220,255,0.92); }
+.well-brick-grid .well-brick-slot.well-rope-cell,
+.well-brick-grid .well-brick-slot.well-bucket-cell {
+  background:rgba(255,255,255,0.08);
+  border-style:solid;
+  border-color:rgba(200,169,110,0.5);
+  font-size:16px;
+}
+.well-brick-grid .well-brick-slot.well-water-border-cell {
+  background:rgba(26, 52, 72, 0.85);
+  border-style:solid;
+  border-color:rgba(56, 120, 180, 0.65);
+  color:rgba(160, 210, 255, 0.95);
+  font-size:11px;
+}
+.cell-well.well-draw-flash,
+.cell-well.well-coin-flash { animation:wellActionFlash 0.35s ease; }
+@keyframes wellActionFlash {
+  0%,100% { filter:brightness(1); }
+  50% { filter:brightness(1.35); }
+}
 .well-body { position:absolute; top:var(--chrome-h); bottom:0; left:0; right:0; overflow-y:auto; padding:14px; }
 .well-brick-grid {
   display:grid; grid-template-columns:repeat(10, 1fr); gap:4px;
@@ -1740,6 +1782,63 @@ body {
 }
 .well-finish-btn[disabled] { opacity:0.45; }
 #fire-pit-screen.world-overlay { background: transparent; }
+#kiln-screen.world-overlay { background: transparent; }
+.kiln-body { position:absolute; top:var(--chrome-h); bottom:0; left:0; right:0; overflow-y:auto; padding:14px; }
+.kiln-progress-count {
+  font-family:var(--font-ui); font-size:10px; font-weight:600;
+  letter-spacing:0.08em; color:var(--ui-text-dim); text-align:center; margin:8px 0 10px;
+}
+.kiln-material-block { margin-bottom:12px; }
+.kiln-material-title {
+  font-family:var(--font-ui); font-size:10px; font-weight:600;
+  letter-spacing:0.06em; color:var(--ui-text-dim); margin-bottom:6px;
+}
+.kiln-use-btns { flex-wrap:wrap; }
+.kiln-recipe-pick {
+  position:relative; align-items:flex-start;
+}
+.kiln-recipe-pick-body,
+.wb-mat-option.kiln-recipe-option .wb-mat-info {
+  padding-right:46px;
+}
+.kiln-skill-level-stack {
+  position:absolute; top:8px; right:24px;
+  display:flex; flex-direction:column; align-items:flex-end; gap:2px;
+  pointer-events:none;
+}
+.kiln-recipe-pick.static .kiln-skill-level-stack,
+.wb-mat-option.kiln-recipe-option .kiln-skill-level-stack {
+  right:8px;
+}
+.kiln-skill-level-stack .plot-add-level-badge {
+  padding:1px 5px; font-size:11px;
+}
+.kiln-skill-level-stack .plot-add-level-icon { font-size:12px; }
+.wb-mat-option.kiln-recipe-option {
+  position:relative; align-items:flex-start; padding-top:6px;
+}
+.plot-cell.cell-kiln {
+  background:linear-gradient(180deg, rgba(52,36,28,0.92) 0%, rgba(30,20,16,0.96) 100%);
+  border:1px solid rgba(180,110,70,0.32);
+}
+.cell-kiln .plot-activity-top { overflow:hidden; }
+.cell-kiln .kiln-sprite {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  height:100%; gap:4px; padding:8px 4px 18px;
+}
+.cell-kiln .kiln-icon { font-size:34px; line-height:1; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.45)); transition:transform 0.2s; }
+.cell-kiln .kiln-label {
+  font-family:var(--font-ui); font-size:9px; font-weight:600; letter-spacing:0.06em;
+  color:rgba(240,210,180,0.82); text-transform:lowercase; text-align:center; line-height:1.2;
+}
+.cell-kiln.kiln-stage-1 .kiln-icon { opacity:0.55; font-size:28px; }
+.cell-kiln.kiln-stage-2 .kiln-icon { font-size:32px; }
+.cell-kiln.kiln-stage-3 .kiln-icon { font-size:36px; }
+.cell-kiln.kiln-moulding .kiln-icon { font-size:38px; }
+.cell-kiln.kiln-unlit .kiln-icon { font-size:38px; }
+.cell-kiln.kiln-unlit .kiln-label { color:rgba(220,190,160,0.78); }
+.cell-kiln.kiln-complete .kiln-icon { font-size:40px; }
+.cell-kiln.kiln-complete .kiln-label { color:rgba(255,210,160,0.9); }
 .fire-pit-body { position:absolute; top:var(--chrome-h); bottom:0; left:0; right:0; overflow-y:auto; padding:14px; }
 .fire-pit-progress-count {
   font-family:var(--font-ui); font-size:10px; font-weight:600;
@@ -1844,6 +1943,7 @@ body {
 .sw-body { position:absolute; top:var(--chrome-h); bottom:0; left:0; right:0; overflow-y:auto; padding:14px; }
 .sw-status { font-family:var(--font-ui); font-size:11px; color:var(--ui-text-dim); text-align:center; margin:6px 0 10px; letter-spacing:0.3px; }
 .sw-status.idle { color:var(--ui-text-dim); opacity:0.75; }
+.sw-status.blocked { color:rgba(255,110,110,0.92); opacity:1; }
 .sw-tier-label { font-family:var(--font-ui); font-size:10px; letter-spacing:1px; color:rgba(200,169,110,0.55); margin:10px 0 4px; }
 .fur-overlay {
   position:absolute; inset:0; z-index:8;
@@ -1984,6 +2084,8 @@ body {
 .store-shelf-action { font-family: var(--font-ui); font-size:10px; padding:5px 7px; border:none; cursor:pointer; border-radius:1px; background:var(--ui-accent); color:#1a0f05; box-shadow:1px 1px 0 #8B6B20; width:100%; }
 .store-shelf-action.secondary { background:rgba(255,255,255,0.08); color:var(--ui-text); box-shadow:1px 1px 0 rgba(0,0,0,0.35); margin-top:0; }
 .store-shelf-action:disabled { opacity:0.45; cursor:default; box-shadow:none; }
+.fish-auto-release-btn.active { background:#6aaa4a; box-shadow:1px 1px 0 #3d6a28; }
+#fish-auto-release-toggle { margin-bottom:8px; }
 .int-cell.buildable .int-item { opacity:0.45; }
 .wb-body { position:absolute; top:var(--chrome-h); bottom:0; left:0; right:0; overflow-y:auto; padding:14px; }
 .wb-header { background:rgba(255,255,255,0.02); border:1px solid var(--ui-border); border-radius:2px; padding:12px; margin-bottom:12px; }
@@ -2124,8 +2226,35 @@ body {
 .wb-mat-stock.missing,
 .wb-mat-pick-avail.missing,
 .wb-log-pick-stock.missing { color: #d06868; }
+.wb-mat-stock.partial-low,
+.wb-mat-pick-avail.partial-low,
+.wb-log-pick-stock.partial-low { color: #c86838; }
+.wb-mat-stock.partial-25,
+.wb-mat-pick-avail.partial-25,
+.wb-log-pick-stock.partial-25 { color: #d87840; }
+.wb-mat-stock.partial-50,
+.wb-mat-pick-avail.partial-50,
+.wb-log-pick-stock.partial-50 { color: #e08848; }
+.wb-mat-stock.partial-75,
+.wb-mat-pick-avail.partial-75,
+.wb-log-pick-stock.partial-75 { color: #e89850; }
 .wb-mat-req.ok { color: #7cb860; }
 .wb-mat-req.missing { color: #d06868; }
+.wb-mat-pick-line { display:block; line-height:1.4; }
+.wb-mat-pick-success {
+  font-family:var(--font-ui); font-size:11px; line-height:1.35;
+  color:var(--ui-text-dim); display:block; margin-top:3px;
+}
+.wb-mat-stock-lines { display:flex; flex-direction:column; gap:2px; }
+.wb-log-pick-collapsed.ready,
+.wb-mat-pick-collapsed.ready {
+  background:rgba(124,184,96,0.10);
+  border-color:rgba(124,184,96,0.42);
+  box-shadow:inset 0 0 0 1px rgba(124,184,96,0.08);
+}
+.wb-log-pick-collapsed.ready.unavail,
+.wb-mat-pick-collapsed.ready.unavail { opacity:1; }
+.wb-mat-pick-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
 .wb-mat-pick-collapsed,
 .wb-log-pick-collapsed {
   display:flex; align-items:center; gap:6px;
@@ -2153,7 +2282,6 @@ body {
 .wb-log-pick-collapsed.static { cursor:default; }
 .wb-mat-pick-collapsed.static:active,
 .wb-log-pick-collapsed.static:active { filter:none; }
-.wb-mat-pick-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
 .wb-mat-pick-chevron,
 .wb-log-pick-chevron { color:var(--ui-text-dim); font-size:11px; flex-shrink:0; }
 .wb-mat-stock.has-tip { cursor:help; text-decoration:underline dotted rgba(168,120,152,0.35); text-underline-offset:2px; }
@@ -2194,17 +2322,14 @@ body {
   padding:7px 6px; border:none; cursor:pointer;
   border-radius:2px; line-height:1.3; text-align:center; flex:1;
 }
-.wb-btn.once { background:rgba(72,32,160,0.35); color:var(--ui-text); border:1px solid rgba(112,72,200,0.4); }
-.wb-btn.once:not(:disabled) {
-  border:2px solid var(--ui-accent);
-  box-shadow:0 0 10px rgba(184,104,255,0.18);
-}
-.wb-btn.continuous { background:rgba(72,32,160,0.28); color:var(--ui-text); border:1px solid rgba(184,104,255,0.35); }
+.wb-btn.once,
+.wb-btn.continuous { background:rgba(72,32,160,0.35); color:var(--ui-text); border:1px solid rgba(112,72,200,0.4); }
+.wb-btn.once:not(:disabled),
 .wb-btn.continuous:not(:disabled) {
   border:2px solid var(--ui-accent);
   box-shadow:0 0 10px rgba(184,104,255,0.18);
 }
-.wb-btn.continuous:disabled { background:rgba(22,14,56,0.35); color:rgba(200,180,230,0.45); border-color:rgba(112,72,200,0.2); }
+.wb-btn.continuous:disabled { background:rgba(72,32,160,0.35); color:var(--ui-text); border:1px solid rgba(112,72,200,0.4); opacity:0.3; }
 .wb-btn.stop { background:rgba(60,20,80,0.4); color:#c8a0e0; border:1px solid rgba(112,72,200,0.3); flex:1; }
 .wb-btn.collect { background:linear-gradient(135deg, rgba(112,48,200,0.5), rgba(200,64,168,0.4)); color:var(--ui-text); border:1px solid rgba(184,104,255,0.45); flex:1; font-size:10px; font-weight:500; padding:9px 8px; }
 .wb-btn:active { filter:brightness(1.12); }
@@ -2419,7 +2544,7 @@ body {
       <span class="skill-pill-tip" id="ext-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-ext"><span class="stat-val" id="gold-ext">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-ext">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-ext">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="navTo('skills')"><span class="nav-btn-icon">📖</span><span class="nav-btn-label">SKILLS</span></button>
@@ -2453,7 +2578,7 @@ body {
       <span class="skill-pill-tip" id="int-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-int"><span class="stat-val" id="gold-int">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-int">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-int">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="navTo('skills')"><span class="nav-btn-icon">📖</span><span class="nav-btn-label">SKILLS</span></button>
@@ -2483,7 +2608,7 @@ body {
     <button class="home-btn" onclick="navHome()">🗺️</button>
     <div class="top-bar-title">Skills</div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-sk"><span class="stat-val" id="gold-sk">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-sk">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-sk">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="navTo('skills')" id="nav-skills-active"><span class="nav-btn-icon">📖</span><span class="nav-btn-label">SKILLS</span></button>
@@ -2507,7 +2632,7 @@ body {
       <span class="skill-pill-tip" id="wb-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-wb"><span class="stat-val" id="gold-wb">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-wb">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-wb">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeWorkbench()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
@@ -2568,7 +2693,7 @@ body {
     <button class="home-btn" onclick="navHome()">🗺️</button>
     <div class="top-bar-title">Store Room</div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-store"><span class="stat-val" id="gold-store">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-store">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-store">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeStoreRoom()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
@@ -2599,7 +2724,7 @@ body {
       <span class="skill-pill-tip" id="fish-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-fish"><span class="stat-val" id="gold-fish">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-fish">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-fish">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeFishing()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
@@ -2620,6 +2745,7 @@ body {
       <div id="fish-available-list"><div class="store-line" style="color:rgba(200,169,110,0.45)">Select a fishing spot.</div></div>
     </div>
     <div class="fish-status idle" id="fish-status">Ready to fish</div>
+    <div id="fish-auto-release-toggle" hidden></div>
     <div class="wb-action-area" id="fish-buttons"></div>
     <div class="wb-log" id="fish-log"></div>
   </div>
@@ -2637,7 +2763,7 @@ body {
       <span class="skill-pill-tip" id="gather-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-gather"><span class="stat-val" id="gold-gather">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-gather">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-gather">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeGathering()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
@@ -2676,7 +2802,7 @@ body {
       <span class="skill-pill-tip" id="farm-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-farm"><span class="stat-val" id="gold-farm">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-farm">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-farm">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeFarmScreen()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
@@ -2720,7 +2846,7 @@ body {
     <button class="home-btn" onclick="navHome()">🗺️</button>
     <div class="top-bar-title">Well (bucketless)</div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-well"><span class="stat-val" id="gold-well">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-well">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-well">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeWellScreen()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
@@ -2739,8 +2865,10 @@ body {
     <div class="well-brick-count" id="well-brick-count">0 / 50 bricks placed</div>
     <div class="well-brick-grid" id="well-brick-grid"></div>
     <div id="well-requirements" hidden></div>
+    <div id="well-quick-toggle" hidden></div>
     <div class="fish-status idle" id="well-status">Tap the well site or place bricks below</div>
     <div class="wb-action-area" id="well-buttons"></div>
+    <div class="wb-log" id="well-log" hidden></div>
   </div>
 </div>
 
@@ -2756,7 +2884,7 @@ body {
       <span class="skill-pill-tip" id="firepit-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-firepit"><span class="stat-val" id="gold-firepit">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-firepit">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-firepit">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeFirePitScreen()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
@@ -2779,8 +2907,8 @@ body {
     <div id="fire-pit-activity-section" hidden>
       <div class="fire-pit-tab-row">
         <button type="button" class="expedition-tier-btn" id="fire-pit-tab-cook" onclick="setFirePitTab('cook')">Cook</button>
-        <button type="button" class="expedition-tier-btn" id="fire-pit-tab-logs" onclick="setFirePitTab('logs')">Burn logs</button>
-        <button type="button" class="expedition-tier-btn" id="fire-pit-tab-furniture" onclick="setFirePitTab('furniture')">Burn furniture</button>
+        <button type="button" class="expedition-tier-btn" id="fire-pit-tab-burn" onclick="setFirePitTab('burn')">Burn</button>
+        <button type="button" class="expedition-tier-btn" id="fire-pit-tab-light" onclick="setFirePitTab('light')">Light</button>
       </div>
       <div id="fire-pit-panel-cook" class="fire-pit-panel" hidden>
         <div class="store-items" style="margin-bottom:12px">
@@ -2793,24 +2921,91 @@ body {
         </div>
         <div class="wb-xp-preview" id="fpc-xp-preview"></div>
       </div>
-      <div id="fire-pit-panel-logs" class="fire-pit-panel" hidden>
+      <div id="fire-pit-panel-burn" class="fire-pit-panel" hidden>
         <div class="store-items" style="margin-bottom:12px">
-          <div class="store-items-title">LOG TYPE</div>
-          <div id="fpl-log-list"></div>
+          <div class="store-items-title">FUEL MATERIAL</div>
+          <div id="fpb-fuel-list"></div>
         </div>
-        <div class="wb-xp-preview" id="fpl-xp-preview"></div>
       </div>
-      <div id="fire-pit-panel-furniture" class="fire-pit-panel" hidden>
+      <div id="fire-pit-panel-light" class="fire-pit-panel" hidden>
         <div class="store-items" style="margin-bottom:12px">
-          <div class="store-items-title">FURNITURE</div>
-          <div id="fpf-furn-list"></div>
+          <div class="store-items-title">SIMPLE TORCH</div>
+          <div class="store-line" style="color:rgba(200,169,110,0.65);padding:2px 0 8px">100 simple-tier logs • Fire Lv 5</div>
+          <div class="store-items-title">LOG TYPE</div>
+          <div id="fpl-light-log-list"></div>
         </div>
-        <div class="wb-xp-preview" id="fpf-xp-preview"></div>
       </div>
     </div>
     <div class="fish-status idle" id="fire-pit-status">Tap the site or use the buttons below to add materials</div>
     <div class="wb-action-area" id="fire-pit-buttons"></div>
     <div class="wb-log" id="firepit-log"></div>
+  </div>
+</div>
+
+<!-- KILN SCREEN -->
+<div id="kiln-screen" class="screen">
+<div class="top-bar">
+    <button class="home-btn" onclick="navHome()">🗺️</button>
+    <div class="top-bar-title">Simple Kiln</div>
+    <div class="stat-pill stat-pill-skill" id="kiln-skill-pill" tabindex="0">
+      <span class="stat-icon" id="kiln-skill-icon">🔥</span>
+      <span class="skill-pill-lvl" id="kiln-skill-lvl">1</span>
+      <div class="skill-pill-bar"><div class="skill-pill-fill sk-fire" id="kiln-skill-fill" style="height:0%"></div></div>
+      <span class="skill-pill-tip" id="kiln-skill-tip"></span>
+    </div>
+    <div class="stat-pill stat-pill-gold" id="gold-pill-kiln"><span class="stat-val" id="gold-kiln">0</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-kiln">0</span>/<span class="inv-cap-display">50</span></span></div>
+  </div>
+  <div class="top-nav">
+    <button class="nav-btn" onclick="closeKilnScreen()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
+    <button class="nav-btn" onclick="event.stopPropagation();togglePanel('equip')"><span class="nav-btn-icon">⚔️</span><span class="nav-btn-label">EQUIP</span></button>
+  </div>
+  <div class="kiln-body activity-panel">
+    <div class="wb-header">
+      <div class="wb-title-row">
+        <span class="wb-icon">🏺</span>
+        <div>
+          <div class="wb-item-name">Simple Kiln</div>
+          <div class="wb-item-sub" id="kiln-subtitle">Lay stone, clay, and bricks to build the kiln</div>
+        </div>
+      </div>
+    </div>
+    <div id="kiln-build-section">
+      <div class="kiln-progress-count" id="kiln-progress-count">0 / 150 materials placed</div>
+      <div id="kiln-material-grids"></div>
+    </div>
+    <div id="kiln-requirements" hidden></div>
+    <div id="kiln-activity-section" hidden>
+      <div class="fire-pit-tab-row">
+        <button type="button" class="expedition-tier-btn active" id="kiln-tab-clay" onclick="setKilnTab('clay')">Clay</button>
+        <button type="button" class="expedition-tier-btn" id="kiln-tab-melting" onclick="setKilnTab('melting')">Melting</button>
+        <button type="button" class="expedition-tier-btn" id="kiln-tab-blow" onclick="setKilnTab('blow')">Blow</button>
+      </div>
+      <div id="kiln-panel-clay" class="fire-pit-panel">
+        <div class="store-items" style="margin-bottom:12px">
+          <div class="store-items-title">RECIPES</div>
+          <div id="kiln-recipe-list-clay"></div>
+        </div>
+        <div class="wb-xp-preview" id="kiln-xp-preview-clay"></div>
+      </div>
+      <div id="kiln-panel-melting" class="fire-pit-panel" hidden>
+        <div class="store-items" style="margin-bottom:12px">
+          <div class="store-items-title">RECIPES</div>
+          <div id="kiln-recipe-list-melting"></div>
+        </div>
+        <div class="wb-xp-preview" id="kiln-xp-preview-melting"></div>
+      </div>
+      <div id="kiln-panel-blow" class="fire-pit-panel" hidden>
+        <div class="store-items" style="margin-bottom:12px">
+          <div class="store-items-title">RECIPES</div>
+          <div id="kiln-recipe-list-blow"></div>
+        </div>
+        <div class="wb-xp-preview" id="kiln-xp-preview-blow"></div>
+      </div>
+    </div>
+    <div class="fish-status idle" id="kiln-status">Tap the site or use the button below to add materials</div>
+    <div class="wb-action-area" id="kiln-buttons"></div>
+    <div class="wb-log" id="kiln-log" hidden></div>
   </div>
 </div>
 
@@ -2826,7 +3021,7 @@ body {
       <span class="skill-pill-tip" id="wc-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-wc"><span class="stat-val" id="gold-wc">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-wc">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-wc">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeWoodcutting()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
@@ -2865,7 +3060,7 @@ body {
       <span class="skill-pill-tip" id="mine-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-mine"><span class="stat-val" id="gold-mine">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-mine">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-mine">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeMining()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
@@ -2903,7 +3098,7 @@ body {
       <span class="skill-pill-tip" id="explore-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-explore"><span class="stat-val" id="gold-explore">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-explore">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-explore">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeExploring()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
@@ -2964,7 +3159,7 @@ body {
       <span class="skill-pill-tip" id="fp-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-fp"><span class="stat-val" id="gold-fp">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-fp">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-fp">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeFireplaceScreen()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
@@ -3007,7 +3202,7 @@ body {
       <span class="skill-pill-tip" id="sw-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-sw"><span class="stat-val" id="gold-sw">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-sw">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-sw">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeSpinningWheelScreen()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
@@ -3046,7 +3241,7 @@ body {
       <span class="skill-pill-tip" id="loom-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-loom"><span class="stat-val" id="gold-loom">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-loom">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-loom">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeLoomScreen()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
@@ -3063,10 +3258,7 @@ body {
       </div>
     </div>
     <div id="loom-output-row" style="margin-bottom:8px"></div>
-    <div class="store-items" id="loom-material-section" style="margin-bottom:12px">
-      <div class="store-items-title">MATERIAL</div>
-      <div id="loom-recipe-list"></div>
-    </div>
+    <div id="loom-material-section" style="margin-bottom:12px"></div>
     <div class="wb-xp-preview" id="loom-xp-preview"></div>
     <div class="sw-status idle" id="loom-status">Turn thread and fiber into fabric</div>
     <div class="wb-action-area" id="loom-buttons"></div>
@@ -3086,7 +3278,7 @@ body {
       <span class="skill-pill-tip" id="botany-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-botany"><span class="stat-val" id="gold-botany">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-botany">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-botany">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closeBotanyTableScreen()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
@@ -3138,7 +3330,7 @@ body {
       <span class="skill-pill-tip" id="pets-skill-tip"></span>
     </div>
     <div class="stat-pill stat-pill-gold" id="gold-pill-pets"><span class="stat-val" id="gold-pets">0</span></div>
-    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-pets">0</span>/50</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-pets">0</span>/<span class="inv-cap-display">50</span></span></div>
   </div>
   <div class="top-nav">
     <button class="nav-btn" onclick="closePetsScreen()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
@@ -3180,6 +3372,7 @@ body {
 <script src="data/structures.js"></script>
 <script src="data/well.js"></script>
 <script src="data/fire-pit.js"></script>
+<script src="data/kiln.js"></script>
 <script src="data/interior.js"></script>
 <script src="data/skills.js"></script>
 <script src="data/equipment.js"></script>
@@ -3204,6 +3397,7 @@ body {
 <script src="js/activities.js"></script>
 <script src="js/well.js"></script>
 <script src="js/fire-pit.js"></script>
+<script src="js/kiln.js"></script>
 <script src="js/farming-plot.js"></script>
 <script src="js/interactions.js"></script>
 <script src="js/botany-table.js"></script>

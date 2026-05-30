@@ -36,7 +36,7 @@ const PLOT_TILE_MENU = [
     id:'structures',
     label:'Structures',
     desc:'Permanent builds that upgrade your homestead.',
-    items:['well','well_finished','fire_pit'],
+    items:['well','well_finished','well_hydrated','fire_pit','simple_kiln'],
   },
   {
     id:'farming',

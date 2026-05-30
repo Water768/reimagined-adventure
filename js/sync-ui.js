@@ -29,12 +29,13 @@ function ensurePlotRenderComplete(){
 
 const SCREEN_SKILL_RESOLVERS={
   'workbench-screen':()=>RECIPES[craft.recipeKey]?.skill||'carpentry',
-  'fishing-screen':()=>'fishing',
+  'fishing-screen':()=>typeof getFishingActivitySkillKey==='function'?getFishingActivitySkillKey():'fishing',
   'gathering-screen':()=>'foraging',
   'woodcutting-screen':()=>'woodcut',
   'mining-screen':()=>'mining',
   'exploring-screen':()=>'exploration',
   'fire-pit-screen':()=>typeof getFirePitActivitySkillKey==='function'?getFirePitActivitySkillKey():'cooking',
+  'kiln-screen':()=>typeof getKilnActivitySkillKey==='function'?getKilnActivitySkillKey():'fire',
   'fireplace-screen':()=>'cooking',
   'spinningwheel-screen':()=>'tailoring',
   'loom-screen':()=>'tailoring',
@@ -51,6 +52,7 @@ const SCREEN_SKILL_PREFIX={
   'mining-screen':'mine',
   'exploring-screen':'explore',
   'fire-pit-screen':'firepit',
+  'kiln-screen':'kiln',
   'fireplace-screen':'fp',
   'spinningwheel-screen':'sw',
   'loom-screen':'loom',
@@ -86,12 +88,15 @@ function updateActivitySkillDisplays(){
     }
   }
 
-  const showExt=currentScreen==='exterior-screen'&&!!skillKey&&(
-    (activity.type==='fishing'&&fish.running)||
-    (activity.type==='gathering'&&gather.running)||
-    (activity.type==='woodcutting'&&!!wc.treeInstanceId)||
-    (activity.type==='mining'&&mine.running)||
-    (activity.type==='exploring'&&explore.running)
+  const showExt=currentScreen==='exterior-screen'&&(
+    fish.releasing||
+    (!!skillKey&&(
+      (activity.type==='fishing'&&fish.running)||
+      (activity.type==='gathering'&&gather.running)||
+      (activity.type==='woodcutting'&&!!wc.treeInstanceId)||
+      (activity.type==='mining'&&mine.running)||
+      (activity.type==='exploring'&&explore.running)
+    ))
   );
   const showInt=currentScreen==='interior-screen'&&!!skillKey&&(
     (activity.type==='cooking'&&cook.running)||
@@ -100,7 +105,7 @@ function updateActivitySkillDisplays(){
     (activity.type==='apothecary'&&apothProcess.running)
   );
   setContextSkillPillVisible(extPill, showExt);
-  if(showExt) updateActivitySkillPill('ext', skillKey);
+  if(showExt) updateActivitySkillPill('ext', fish.releasing?'water':skillKey);
   setContextSkillPillVisible(intPill, showInt);
   if(showInt) updateActivitySkillPill('int', skillKey);
 }
@@ -108,15 +113,17 @@ function updateActivitySkillDisplays(){
 const INV_COUNT_PILL_IDS=[
   'inv-count-ext','inv-count-int','inv-count-wb','inv-count-sk','inv-count-store',
   'inv-count-fish','inv-count-gather','inv-count-wc','inv-count-mine','inv-count-explore',
-  'inv-count-fp','inv-count-sw','inv-count-loom','inv-count-botany','inv-count-pets','inv-count-well','inv-count-firepit','inv-count-farm',
+  'inv-count-fp','inv-count-sw','inv-count-loom','inv-count-botany','inv-count-pets','inv-count-well','inv-count-firepit','inv-count-kiln','inv-count-farm',
 ];
 
 function updateInvCountPills(){
   const used=invTotal();
+  const cap=getInvCap();
   INV_COUNT_PILL_IDS.forEach(id=>{
     const e=document.getElementById(id);
     if(e) e.textContent=used;
   });
+  document.querySelectorAll('.inv-cap-display').forEach(el=>{ el.textContent=cap; });
 }
 
 function syncInventoryUI(){
@@ -145,7 +152,7 @@ function syncUI(){
     setTimeout(()=>showToast('🗄️ '+n+' store room'+(n===1?'':'s')+' had no space on the map — ghost capacity removed.'),600);
   }
   syncInventoryUI();
-  ['gold-ext','gold-int','gold-wb','gold-sk','gold-store','gold-fish','gold-gather','gold-wc','gold-mine','gold-explore','gold-fp','gold-sw','gold-loom','gold-botany','gold-pets','gold-well','gold-firepit','gold-farm'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=state.gold;});
+  ['gold-ext','gold-int','gold-wb','gold-sk','gold-store','gold-fish','gold-gather','gold-wc','gold-mine','gold-explore','gold-fp','gold-sw','gold-loom','gold-botany','gold-pets','gold-well','gold-firepit','gold-kiln','gold-farm'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=state.gold;});
   document.querySelectorAll('.stat-pill-gold').forEach(el=>el.classList.toggle('visible',state.gold>0));
   document.querySelectorAll('.int-cell[data-int-key="fireplace"]').forEach(el=>el.classList.toggle('fireplace-cooking',cook.running));
   document.querySelectorAll('.int-cell[data-int-key="spinningwheel"]').forEach(el=>el.classList.toggle('spinning-wheel-active',spin.running));
@@ -156,6 +163,8 @@ function syncUI(){
   updateQuarryCells();
   updateFireplaceCell();
   if(typeof updateFirePitCellQuickAction==='function') updateFirePitCellQuickAction();
+  if(typeof updateKilnCellQuickAction==='function') updateKilnCellQuickAction();
+  if(typeof updateWellCellQuickAction==='function') updateWellCellQuickAction();
   updateSpinningWheelCell();
   if(typeof updateApothecaryCellQuickAction==='function') updateApothecaryCellQuickAction();
   if(typeof updateLoomCellQuickAction==='function') updateLoomCellQuickAction();

@@ -19,8 +19,10 @@ const PLOT_TILE_BASE = {
   water_basic: { typeId:'water_basic', name:'Basic Water', icon:'🌊', behavior:'water', removable:true,  category:'water' },
   cave:        { typeId:'cave',        name:'Cave',        icon:'🕳️', behavior:'cave',  removable:true,  category:'cave' },
   well:        { typeId:'well',        name:'Well (bucketless)', icon:'🪣', behavior:'well',  removable:true, category:'structure', archUnlockLevel:1, desc:'Build with 50 bricks — free after your first.' },
-  well_finished:{ typeId:'well_finished', name:'Well', icon:'🪣', behavior:'well', removable:true, category:'structure', archUnlockLevel:1, desc:'A working well — free after your first.' },
+  well_finished:{ typeId:'well_finished', name:'Well (dry)', icon:'🪣', behavior:'well', removable:true, category:'structure', archUnlockLevel:1, desc:'Rope and bucket fitted — hydrate to draw water.' },
+  well_hydrated:{ typeId:'well_hydrated', name:'Well', icon:'💧', behavior:'well', removable:true, category:'structure', archUnlockLevel:1, waterSource:true, desc:'A working water source — free after your first.' },
   fire_pit:    { typeId:'fire_pit',    name:'Fire Pit', icon:'🔥', behavior:'fire_pit', removable:true, category:'structure', archUnlockLevel:4, desc:'Build with 50 stone, 50 clay, and 50 bricks — free after your first.' },
+  simple_kiln: { typeId:'simple_kiln', name:'Simple Kiln', icon:'🏺', behavior:'kiln', removable:true, category:'structure', archUnlockLevel:8, desc:'Build with 50 stone, 50 clay, and 50 bricks — smelt bricks and glass.' },
   farm_plot:   { typeId:'farm_plot',   name:'Farming Plot', icon:'🌾', behavior:'farm', removable:true, category:'farming', desc:'Plant seeds and harvest crops over time.' },
 };
 
@@ -125,10 +127,11 @@ const GATHERING_LOCATIONS=[
     icon:'💧',
     shardTypes:['water'],
     drops:[
-      {key:'reeds',icon:'🌾',name:'Reeds',weight:30},
-      {key:'worms',icon:'🪱',name:'Worms',weight:25},
-      {key:'basic_herbs',icon:'🌿',name:'Basic Herbs',weight:25},
-      {key:'feathers',icon:'🪶',name:'Feathers',weight:20},
+      {key:'reeds',icon:'🌾',name:'Reeds',weight:25},
+      {key:'worms',icon:'🪱',name:'Worms',weight:20},
+      {key:'basic_herbs',icon:'🌿',name:'Basic Herbs',weight:20},
+      {key:'feathers',icon:'🪶',name:'Feathers',weight:15},
+      {key:'duckweed',icon:'🌿',name:'Duckweed',weight:20},
     ],
   },
   {
@@ -156,8 +159,9 @@ const GATHERING_LOCATIONS=[
       {key:'copper_ore',icon:'🟤',name:'Copper Ore',weight:24},
       {key:'bones',icon:'🦴',name:'Bones',weight:5},
       {key:'large_bone',icon:'🦴',name:'Large Bone',weight:1},
-      {key:'artefact_basic',icon:'🏺',name:'Basic Artefact',weight:18},
-      {key:'quartz',icon:'💎',name:'Quartz',weight:8,rare:true},
+      {key:'artefact_basic',icon:'🏺',name:'Basic Artefact',weight:9},
+      {key:'old_coin',icon:'🪙',name:'Old Coin',weight:12},
+      {key:'quartz',icon:'💎',name:'Quartz',weight:5,rare:true},
       {key:'artefact_rare',icon:'🗿',name:'Rare Artefact',weight:5,rare:true},
       {key:'pickaxe',icon:'⛏️',name:'Pickaxe',weight:2,rare:true},
       {key:'artefact_extreme',icon:'👑',name:'Extreme Artefact',weight:0.5,rare:true},
@@ -165,9 +169,18 @@ const GATHERING_LOCATIONS=[
   },
 ];
 
+function sortedGatheringDrops(gatherKey){
+  const loc=GATHERING_LOCATIONS.find(g=>g.key===gatherKey);
+  if(!loc?.drops?.length) return [];
+  const total=loc.drops.reduce((s,d)=>s+d.weight,0);
+  return loc.drops.slice()
+    .sort((a,b)=>b.weight-a.weight)
+    .map(d=>({ ...d, pct:Math.round((d.weight/total)*100) }));
+}
+
 const GATHER_BASE_SUCCESS=0.20;
 const GATHER_SUCCESS_PER_LEVEL=0.05;
-const GATHER_ITEMS_PER_SESSION=4;
+const GATHER_ITEMS_PER_SESSION=8;
 const GATHER_XP_SUCCESS=8;
 const GATHER_XP_MISS=2;
 const CLUTTER_CHANCE=1/3;

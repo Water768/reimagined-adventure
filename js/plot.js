@@ -144,6 +144,7 @@ function migratePlot(){
   migrateQuarryTypeIds();
   if(typeof migrateWell==='function') migrateWell();
   if(typeof migrateFirePit==='function') migrateFirePit();
+  if(typeof migrateKiln==='function') migrateKiln();
 
   if(plotHasOccupiedCells()){
     migrateWoodlandTiles();
@@ -393,9 +394,9 @@ function getCurrentGatheringLocation(){
 }
 
 function formatGatheringDrops(gatherKey){
-  const loc=getGatheringByKey(gatherKey);
-  if(!loc) return '';
-  return loc.drops.map(d=>d.name+(d.rare?' (rare)':'')).join(' · ');
+  return sortedGatheringDrops(gatherKey)
+    .map(d=>d.pct+'% '+d.name+(d.rare?' (rare)':''))
+    .join(' · ');
 }
 
 function buildCavePlotAddItem(id, def, x, y){
@@ -517,10 +518,17 @@ function buildWellCellHtml(slot, def, editMode){
   if(typeof migrateWell==='function') migrateWell();
   const cfg=typeof getWellConfig==='function'?getWellConfig(slot.instanceId):null;
   const vis=getWellVisualState(cfg);
+  const hydrated=vis.stage==='hydrated';
+  const quick=typeof wellQuickTapLabel==='function'?wellQuickTapLabel():'fill vessel';
   return '<div class="plot-activity-top well-activity-top well-'+vis.stage+'">'
     +'<div class="well-sprite">'
     +'<span class="well-icon">'+vis.icon+'</span>'
     +'<span class="well-label">'+vis.label+'</span></div></div>'
+    +(hydrated
+      ?'<div class="plot-activity-top well-quick-zone">'
+        +'<button type="button" class="int-quick-action-btn well-quick-action-btn" onclick="wellQuickTap(event)">'+quick+'</button>'
+      +'</div>'
+      :'')
     +'<div class="plot-activity-menu-zone well-menu-zone">'
     +'<button type="button" class="plot-menu-btn well-menu-btn" onclick="wellMenuTap(event)">menu</button>'
     +'</div>'
@@ -544,6 +552,28 @@ function buildFirePitCellHtml(slot, def, editMode){
       :'')
     +'<div class="plot-activity-menu-zone fire-pit-menu-zone">'
     +'<button type="button" class="plot-menu-btn fire-pit-menu-btn" onclick="firePitMenuTap(event)">menu</button>'
+    +'</div>'
+    +(editMode?'<div class="plot-edit-hint">remove</div>':'');
+}
+
+function buildKilnCellHtml(slot, def, editMode){
+  if(typeof migrateKiln==='function') migrateKiln();
+  const cfg=typeof getKilnConfig==='function'?getKilnConfig(slot.instanceId):null;
+  const vis=getKilnVisualState(cfg);
+  const stage=getKilnStage(cfg);
+  const lit=stage==='complete';
+  const quick=typeof kilnPlotQuickLabel==='function'?kilnPlotQuickLabel(stage, cfg):'open menu';
+  return '<div class="plot-activity-top kiln-activity-top kiln-'+vis.stage+'">'
+    +'<div class="kiln-sprite">'
+    +'<span class="kiln-icon">'+vis.icon+'</span>'
+    +'<span class="kiln-label">'+vis.label+'</span></div></div>'
+    +(lit
+      ?'<div class="plot-activity-top kiln-quick-zone">'
+        +'<button type="button" class="int-quick-action-btn kiln-quick-action-btn" onclick="kilnQuickTap(event)">'+quick+'</button>'
+      +'</div>'
+      :'')
+    +'<div class="plot-activity-menu-zone kiln-menu-zone">'
+    +'<button type="button" class="plot-menu-btn kiln-menu-btn" onclick="kilnMenuTap(event)">menu</button>'
     +'</div>'
     +(editMode?'<div class="plot-edit-hint">remove</div>':'');
 }
@@ -580,8 +610,9 @@ function defaultPlotConfig(behavior, typeId){
   if(behavior==='water') return { seen:false };
   if(behavior==='gather') return { seen:false };
   if(behavior==='cave') return { seen:false };
-  if(behavior==='well') return { bricks:0, bucketless:false, equipped:false, freePlaced:false };
+  if(behavior==='well') return { bricks:0, bucketless:false, equipped:false, hydrated:false, freePlaced:false };
   if(behavior==='fire_pit') return { stone:0, clay:0, bricks:0, complete:false, freePlaced:false };
+  if(behavior==='kiln') return { stone:0, clay:0, bricks:0, mouldIron:0, fuelLogs:0, fuelAshwood:0, fuelTeak:0, fired:false, moulded:false, fueled:false, lit:false, freePlaced:false };
   if(behavior==='farm') return { seedKey:null, cropKey:null, seedQty:0, plantedAt:null };
   return {};
 }
@@ -652,6 +683,7 @@ function clearPlotTileConfig(instanceId, typeId){
   if(def?.behavior==='tree'&&wc.treeInstanceId===instanceId) wc.treeInstanceId=null;
   if(def?.behavior==='well'&&typeof setActiveWell==='function'&&activeWellInstanceId===instanceId) setActiveWell(null);
   if(def?.behavior==='fire_pit'&&typeof setActiveFirePit==='function'&&activeFirePitInstanceId===instanceId) setActiveFirePit(null);
+  if(def?.behavior==='kiln'&&typeof setActiveKiln==='function'&&activeKilnInstanceId===instanceId) setActiveKiln(null);
   if(def?.behavior==='farm'&&typeof setActiveFarm==='function'&&activeFarmInstanceId===instanceId) setActiveFarm(null);
   delete state.plotConfigs[instanceId];
 }
@@ -727,10 +759,11 @@ function quarryStackBadgeHtml(stacks, maxStacks){
 }
 
 function hidePlotActivityMenu(key){
-  if(key&&plotActivityMenuTimers[key]){
-    clearTimeout(plotActivityMenuTimers[key]);
-    delete plotActivityMenuTimers[key];
-  }
+  if(!key||!plotActivityMenuTimers[key]) return;
+  const entry=plotActivityMenuTimers[key];
+  if(entry.timer) clearTimeout(entry.timer);
+  if(entry.el?.classList) entry.el.classList.remove('plot-activity-menu-ready');
+  delete plotActivityMenuTimers[key];
 }
 
 function hideAllPlotActivityMenus(){
@@ -743,12 +776,9 @@ function hideAllPlotActivityMenus(){
 function revealPlotActivityMenu(key, el){
   if(!key||!el) return;
   hideAllPlotActivityMenus();
-  hidePlotActivityMenu(key);
   el.classList.add('plot-activity-menu-ready');
-  plotActivityMenuTimers[key]=setTimeout(()=>{
-    el.classList.remove('plot-activity-menu-ready');
-    delete plotActivityMenuTimers[key];
-  }, ACTIVITY_MENU_SHOW_MS);
+  const timer=setTimeout(()=>hidePlotActivityMenu(key), ACTIVITY_MENU_SHOW_MS);
+  plotActivityMenuTimers[key]={ timer, el };
 }
 
 function isPlotMenuZone(el, clientY){
@@ -758,13 +788,16 @@ function isPlotMenuZone(el, clientY){
 
 function handleWellCellTap(e, cell, slot){
   setActiveWell(slot.instanceId);
+  if(e.target?.closest('.well-quick-action-btn')){ wellQuickTap(e); return; }
   if(e.target?.closest('.plot-menu-btn')){ wellMenuTap(e); return; }
   if(isPlotMenuZone(cell, e.clientY)&&cell.classList.contains('plot-activity-menu-ready')){
     wellMenuTap(e);
     return;
   }
   const cfg=typeof getWellConfig==='function'?getWellConfig(slot.instanceId):null;
-  if(getWellStage(cfg)==='building'&&typeof placeWellBrick==='function') placeWellBrick(e, slot.instanceId);
+  const stage=typeof getWellStage==='function'?getWellStage(cfg):'building';
+  if(stage==='building'&&typeof placeWellBrick==='function') placeWellBrick(e, slot.instanceId);
+  else if(stage==='hydrated'&&typeof wellQuickTap==='function') wellQuickTap(e);
   const freshCell=document.querySelector('.plot-cell.cell-well[data-instance-id="'+slot.instanceId+'"]')||cell;
   revealPlotActivityMenu('well:'+slot.instanceId, freshCell);
 }
@@ -784,6 +817,35 @@ function handleFirePitCellTap(e, cell, slot){
   }
   const freshCell=document.querySelector('.plot-cell.cell-fire-pit[data-instance-id="'+slot.instanceId+'"]')||cell;
   revealPlotActivityMenu('fire_pit:'+slot.instanceId, freshCell);
+}
+
+function handleKilnCellTap(e, cell, slot){
+  setActiveKiln(slot.instanceId);
+  if(e.target?.closest('.kiln-quick-action-btn')){ kilnQuickTap(e); return; }
+  if(e.target?.closest('.plot-menu-btn')){ kilnMenuTap(e); return; }
+  if(isPlotMenuZone(cell, e.clientY)&&cell.classList.contains('plot-activity-menu-ready')){
+    kilnMenuTap(e);
+    return;
+  }
+  const cfg=typeof getKilnConfig==='function'?getKilnConfig(slot.instanceId):null;
+  const stage=getKilnStage(cfg);
+  if(stage==='building'&&typeof placeKilnBuildMaterial==='function'){
+    const next=KILN_BUILD_MATERIALS.find(m=>(cfg[m.countKey]|0)<m.required);
+    if(next) placeKilnBuildMaterial(e, slot.instanceId, next.key);
+  }else if(stage==='moulding'&&typeof placeKilnMouldIron==='function'){
+    placeKilnMouldIron(e, slot.instanceId);
+  }else if(stage==='unlit'&&typeof placeKilnFuelLog==='function'){
+    if(!isKilnFueled(cfg)){
+      const next=KILN_FUEL_LOGS.find(l=>(cfg[l.countKey]|0)<KILN_FUEL_LOG_REQUIRED);
+      if(next) placeKilnFuelLog(e, slot.instanceId, next.key);
+    }else if(typeof openKilnScreen==='function'){
+      openKilnScreen();
+    }
+  }else if(stage==='complete'&&typeof kilnQuickTap==='function'){
+    kilnQuickTap(e);
+  }
+  const freshCell=document.querySelector('.plot-cell.cell-kiln[data-instance-id="'+slot.instanceId+'"]')||cell;
+  revealPlotActivityMenu('kiln:'+slot.instanceId, freshCell);
 }
 
 function handleWoodlandCellTap(e, cell, slot){
@@ -825,8 +887,8 @@ function handleGatherCellTap(e, cell, slot){
     return;
   }
   if(gather.running&&gather.instanceId!==instanceId){
-    if(invTotal()>=INV_CAP){
-      showToast('Bag full ('+INV_CAP+'/'+INV_CAP+') — make room before foraging.');
+    if(invTotal()>=getInvCap()){
+      showToast('Bag full ('+invTotal()+'/'+getInvCap()+') — make room before foraging.');
       revealPlotActivityMenu('gather:'+instanceId, cell);
       return;
     }
@@ -834,8 +896,8 @@ function handleGatherCellTap(e, cell, slot){
     revealPlotActivityMenu('gather:'+instanceId, cell);
     return;
   }
-  if(invTotal()>=INV_CAP){
-    showToast('Bag full ('+INV_CAP+'/'+INV_CAP+') — make room before foraging.');
+  if(invTotal()>=getInvCap()){
+    showToast('Bag full ('+invTotal()+'/'+getInvCap()+') — make room before foraging.');
     revealPlotActivityMenu('gather:'+instanceId, cell);
     return;
   }
@@ -843,8 +905,37 @@ function handleGatherCellTap(e, cell, slot){
   revealPlotActivityMenu('gather:'+instanceId, cell);
 }
 
+function resolveWaterSurfaceForPlotCell(x, y, slot, cell){
+  if(!plotWaterBodies) computeWaterBodies();
+  const bodyKey=plotCoordKey(x,y);
+  const bodyId=plotWaterBodies?.cellToBody?.[bodyKey]||cell?.dataset?.waterBodyId;
+  if(bodyId){
+    const surface=getWaterBodySurface(bodyId);
+    if(surface) return surface;
+  }
+  if(slot?.instanceId){
+    return document.querySelector('.water-body-surface[data-instance-id="'+slot.instanceId+'"]');
+  }
+  return null;
+}
+
+function resolvePondInstanceIdFromSurface(surface){
+  if(!surface) return null;
+  if(surface.dataset.instanceId) return surface.dataset.instanceId;
+  const bodyId=surface.dataset.waterBodyId;
+  if(!bodyId) return null;
+  if(!plotWaterBodies) computeWaterBodies();
+  const body=plotWaterBodies?.bodies?.[bodyId];
+  if(!body?.cells?.length) return null;
+  for(const c of body.cells){
+    const slot=getPlotCell(c.x,c.y);
+    if(slot?.instanceId) return slot.instanceId;
+  }
+  return null;
+}
+
 function handleWaterSurfaceTap(e, surface){
-  const pondId=surface.dataset.instanceId||null;
+  const pondId=resolvePondInstanceIdFromSurface(surface);
   const menuKey='pond:'+(surface.dataset.waterBodyId||pondId||'spot');
   if(e.target?.closest('.plot-menu-btn')){ pondMenuTap(e, surface); return; }
   if(isPlotMenuZone(surface, e.clientY)&&surface.classList.contains('plot-activity-menu-ready')){
@@ -852,27 +943,29 @@ function handleWaterSurfaceTap(e, surface){
     return;
   }
   notePondSeen();
-  if(fish.running&&pondId&&fish.pondInstanceId===pondId){
+  if(pondId) fish.pondInstanceId=pondId;
+  if(fish.releasing) stopReleasingFish();
+  const instanceId=pondId;
+  if(fish.running&&fish.pondInstanceId===instanceId){
     revealPlotActivityMenu(menuKey, surface);
     return;
   }
-  if(fish.running&&pondId&&fish.pondInstanceId!==pondId){
-    if(invTotal()>=INV_CAP){
-      showToast('Bag is full — make room for fish.');
+  if(fish.running&&fish.pondInstanceId!==instanceId){
+    if(invTotal()>=getInvCap()){
+      showToast('Bag is full ('+invTotal()+'/'+getInvCap()+') — make room for fish.');
       revealPlotActivityMenu(menuKey, surface);
       return;
     }
-    switchFishingSpot(pondId);
+    switchFishingSpot(instanceId);
     revealPlotActivityMenu(menuKey, surface);
     return;
   }
-  if(pondId) fish.pondInstanceId=pondId;
-  if(invTotal()>=INV_CAP){
-    showToast('Bag is full — make room for fish.');
+  if(invTotal()>=getInvCap()){
+    showToast('Bag is full ('+invTotal()+'/'+getInvCap()+') — make room for fish.');
     revealPlotActivityMenu(menuKey, surface);
     return;
   }
-  startFishing(pondId);
+  startFishing(instanceId);
   revealPlotActivityMenu(menuKey, surface);
 }
 
@@ -892,13 +985,20 @@ function removePlotTile(x,y){
   if(!slot) return;
   const def=getPlotTileDef(slot.typeId);
   if(!def?.removable) return;
-  if(def.behavior==='well'&&typeof setActiveWell==='function'&&activeWellInstanceId===slot.instanceId){
-    setActiveWell(null);
-    if(currentScreen==='well-screen'&&typeof closeWellScreen==='function') closeWellScreen();
+  if(def.behavior==='well'){
+    if(typeof stopWellFillVessels==='function') stopWellFillVessels();
+    if(typeof setActiveWell==='function'&&activeWellInstanceId===slot.instanceId){
+      setActiveWell(null);
+      if(currentScreen==='well-screen'&&typeof closeWellScreen==='function') closeWellScreen();
+    }
   }
   if(def.behavior==='fire_pit'&&typeof setActiveFirePit==='function'&&activeFirePitInstanceId===slot.instanceId){
     setActiveFirePit(null);
     if(currentScreen==='fire-pit-screen'&&typeof closeFirePitScreen==='function') closeFirePitScreen();
+  }
+  if(def.behavior==='kiln'&&typeof setActiveKiln==='function'&&activeKilnInstanceId===slot.instanceId){
+    setActiveKiln(null);
+    if(currentScreen==='kiln-screen'&&typeof closeKilnScreen==='function') closeKilnScreen();
   }
   clearPlotTileConfig(slot.instanceId, slot.typeId);
   setPlotCell(x,y,null);
@@ -918,9 +1018,20 @@ function structurePlotAddItemHtml(id, def, x, y, opts){
 }
 
 function buildStructurePlotAddItem(id, def, x, y){
-  if(id==='well_finished'){
-    const unlocked=typeof isWellFinishedUnlocked==='function'&&isWellFinishedUnlocked();
+  if(id==='well_hydrated'){
+    const unlocked=typeof isWellHydratedUnlocked==='function'&&isWellHydratedUnlocked();
     return structurePlotAddItemHtml(id, def, x, y, { unlocked, disabled:!unlocked });
+  }
+  if(id==='well_finished'){
+    if(typeof isWellHydratedUnlocked==='function'&&isWellHydratedUnlocked()) return '';
+    const unlocked=typeof isWellFinishedUnlocked==='function'&&isWellFinishedUnlocked();
+    return structurePlotAddItemHtml(id, def, x, y, {
+      unlocked:false,
+      disabled:!unlocked,
+      drops:unlocked
+        ?'Incomplete — hydrate with Water Lv '+WELL_HYDRATE_WATER_LEVEL
+        :'Locked. Finish a well with rope and bucket first.',
+    });
   }
   if(id==='well'){
     if(typeof isWellFinishedUnlocked==='function'&&isWellFinishedUnlocked()) return '';
@@ -940,6 +1051,18 @@ function buildStructurePlotAddItem(id, def, x, y){
     const canPlace=typeof canPlaceFirePit==='function'&&canPlaceFirePit();
     return structurePlotAddItemHtml(id, def, x, y, { unlocked, disabled:!canPlace });
   }
+  if(id==='simple_kiln'){
+    if(typeof canUseKilnStructure==='function'&&!canUseKilnStructure()){
+      return structurePlotAddItemHtml(id, def, x, y, {
+        unlocked:false,
+        disabled:true,
+        drops:'Need Architecture Lv '+KILN_ARCH_UNLOCK,
+      });
+    }
+    const unlocked=typeof isKilnLitUnlocked==='function'&&isKilnLitUnlocked();
+    const canPlace=typeof canPlaceKiln==='function'&&canPlaceKiln();
+    return structurePlotAddItemHtml(id, def, x, y, { unlocked, disabled:!canPlace });
+  }
   return structurePlotAddItemHtml(id, def, x, y, { unlocked:false, disabled:false });
 }
 
@@ -957,6 +1080,10 @@ function placePlotTile(x,y, typeId){
     showToast('Finish a well with rope and bucket first.');
     return;
   }
+  if(def.behavior==='well'&&typeId==='well_hydrated'&&typeof isWellHydratedUnlocked==='function'&&!isWellHydratedUnlocked()){
+    showToast('Hydrate a well first.');
+    return;
+  }
   if(def.behavior==='fire_pit'){
     if(typeof canUseFirePitStructure==='function'&&!canUseFirePitStructure()){
       showToast('Need Architecture Lv '+FIRE_PIT_ARCH_UNLOCK+' for Fire Pit.');
@@ -964,6 +1091,16 @@ function placePlotTile(x,y, typeId){
     }
     if(typeof canPlaceFirePit==='function'&&!canPlaceFirePit()){
       showToast('Finish building your first fire pit before placing another.');
+      return;
+    }
+  }
+  if(def.behavior==='kiln'){
+    if(typeof canUseKilnStructure==='function'&&!canUseKilnStructure()){
+      showToast('Need Architecture Lv '+KILN_ARCH_UNLOCK+' for Simple Kiln.');
+      return;
+    }
+    if(typeof canPlaceKiln==='function'&&!canPlaceKiln()){
+      showToast('Finish building your first kiln before placing another.');
       return;
     }
   }
@@ -985,14 +1122,23 @@ function placePlotTile(x,y, typeId){
     migrateWell();
     const cfg=getWellConfig(instanceId);
     setActiveWell(instanceId);
-    if(typeId==='well_finished'){
+    if(typeId==='well_hydrated'){
+      cfg.bricks=WELL_BRICKS_REQUIRED;
+      cfg.bucketless=true;
+      cfg.equipped=true;
+      cfg.hydrated=true;
+      cfg.freePlaced=true;
+      scheduleSaveGame();
+      renderPlotGrid();
+      showToast('Well placed.');
+    }else if(typeId==='well_finished'){
       cfg.bricks=WELL_BRICKS_REQUIRED;
       cfg.bucketless=true;
       cfg.equipped=true;
       cfg.freePlaced=true;
       scheduleSaveGame();
       renderPlotGrid();
-      showToast('Well placed.');
+      showToast('Well (dry) placed.');
     }else if(state.wellUnlocked){
       cfg.bricks=WELL_BRICKS_REQUIRED;
       cfg.bucketless=true;
@@ -1018,6 +1164,29 @@ function placePlotTile(x,y, typeId){
       scheduleSaveGame();
       renderPlotGrid();
       showToast('Fire pit placed.');
+    }else{
+      scheduleSaveGame();
+      renderPlotGrid();
+      showToast('You mark out the site. Stone, clay, and bricks needed.');
+    }
+    return;
+  }
+  if(def.behavior==='kiln'){
+    migrateKiln();
+    const cfg=getKilnConfig(instanceId);
+    setActiveKiln(instanceId);
+    if(state.kilnLitUnlocked){
+      applyKilnFreePlacedReady(cfg);
+      scheduleSaveGame();
+      renderPlotGrid();
+      showToast('Simple kiln placed.');
+    }else if(state.kilnUnlocked){
+      KILN_BUILD_MATERIALS.forEach(m=>{ cfg[m.countKey]=m.required; });
+      cfg.fired=true;
+      cfg.freePlaced=true;
+      scheduleSaveGame();
+      renderPlotGrid();
+      showToast('Simple kiln placed.');
     }else{
       scheduleSaveGame();
       renderPlotGrid();
@@ -1326,6 +1495,13 @@ function attachWaterSurfaceHandlers(_surface){
   /* tap handled via plot viewport pointer (pan vs tap) */
 }
 
+function resolveWaterSurfaceFromPlotCell(cell){
+  if(!cell?.classList?.contains('cell-water-base')) return null;
+  const {x,y}=plotCoordsFromCell(cell);
+  const slot=getPlotCell(x,y);
+  return resolveWaterSurfaceForPlotCell(x,y,slot,cell);
+}
+
 function renderWaterBodyOverlays(grid, wbData, plotBounds){
   grid.querySelectorAll('.plot-water-layer,.plot-water-defs').forEach(n=>n.remove());
   if(!wbData) return;
@@ -1445,8 +1621,16 @@ function rollFishForBody(bodyType){
   return rares[Math.floor(Math.random()*rares.length)];
 }
 
-function buildWaterBaseCellHtml(editMode){
-  return (editMode?'<div class="plot-edit-hint">remove</div>':'');
+function buildWaterBaseCellHtml(def, editMode, bodyType){
+  if(!editMode) return '';
+  const typeCfg=bodyType&&typeof WATER_BODY_TYPES!=='undefined'?WATER_BODY_TYPES[bodyType]:null;
+  const label=(typeCfg?.name||def?.name||'water').toLowerCase();
+  const icon=typeof waterBodyPlotIcon==='function'?waterBodyPlotIcon(bodyType||'pond'):(def?.icon||'🌊');
+  return '<div class="plot-activity-top water-edit-top">'
+    +'<div class="water-edit-sprite">'
+    +'<span class="water-edit-icon">'+icon+'</span>'
+    +'<span class="water-edit-label">'+label+'</span></div></div>'
+    +'<div class="plot-edit-hint">remove</div>';
 }
 
 function createPlotCellElement(x,y,wbData){
@@ -1497,9 +1681,10 @@ function createPlotCellElement(x,y,wbData){
   if(def.behavior==='water'){
     const bodyKey=plotCoordKey(x,y);
     const bodyId=wbData?.cellToBody?.[bodyKey]||null;
-    cell.classList.add('cell-water-base');
+    const bodyType=bodyId?wbData?.bodies?.[bodyId]?.type:null;
+    cell.classList.add('cell-water-base','cell-water');
     if(bodyId) cell.dataset.waterBodyId=bodyId;
-    cell.innerHTML=buildWaterBaseCellHtml(editMode);
+    cell.innerHTML=buildWaterBaseCellHtml(def, editMode, bodyType);
     return cell;
   }
 
@@ -1544,6 +1729,12 @@ function createPlotCellElement(x,y,wbData){
     return cell;
   }
 
+  if(def.behavior==='kiln'){
+    cell.classList.add('cell-kiln');
+    cell.innerHTML=buildKilnCellHtml(slot, def, editMode);
+    return cell;
+  }
+
   return cell;
 }
 
@@ -1573,6 +1764,7 @@ function renderPlotGrid(){
   updateQuarryCells();
   if(typeof updateWellCells==='function') updateWellCells();
   if(typeof updateFirePitCells==='function') updateFirePitCells();
+  if(typeof updateKilnCells==='function') updateKilnCells();
   if(typeof updateFarmCells==='function') updateFarmCells();
   hideAllPlotActivityMenus();
   applyPlotPan();
@@ -1650,13 +1842,26 @@ function endPlotDragGhost(){
 }
 
 function handlePlotPointerTap(e, cell, waterSurface){
-  if(plotSuppressClick) return;
-  if(waterSurface&&!state.plot?.editMode){
-    if(e.target?.closest?.('.plot-menu-btn')) return;
-    handleWaterSurfaceTap(e, waterSurface);
+  if(state.plot?.editMode){
+    if(plotSuppressClick) return;
+    if(!cell) return;
+    const {x,y}=plotCoordsFromCell(cell);
+    const slot=getPlotCell(x,y);
+    if(!slot){
+      onEmptyPlotTap(x,y);
+      return;
+    }
+    onPlotTileTap(e,x,y,slot);
     return;
   }
-  if(cell&&!state.plot?.editMode){
+  const surface=waterSurface||resolveWaterSurfaceFromPlotCell(cell);
+  if(surface){
+    if(e.target?.closest?.('.plot-menu-btn')) return;
+    handleWaterSurfaceTap(e, surface);
+    return;
+  }
+  if(plotSuppressClick) return;
+  if(cell){
     const {x,y}=plotCoordsFromCell(cell);
     const slot=getPlotCell(x,y);
     const def=slot&&getPlotTileDef(slot.typeId);
@@ -1692,6 +1897,11 @@ function handlePlotPointerTap(e, cell, waterSurface){
       handleFirePitCellTap(e, cell, slot);
       return;
     }
+    if(def?.behavior==='kiln'){
+      if(e.target?.closest?.('.plot-menu-btn')) return;
+      handleKilnCellTap(e, cell, slot);
+      return;
+    }
   }
   if(!cell) return;
   const {x,y}=plotCoordsFromCell(cell);
@@ -1708,8 +1918,9 @@ function onPlotViewportPointerDown(e){
   if(e.target.closest('.plot-edit-btn')) return;
   const cell=e.target.closest('.plot-cell');
   if(e.target.closest('.plot-menu-btn')&&!cell?.classList?.contains('cell-quarry')) return;
-  const waterSurface=e.target.closest('.water-body-surface');
-  const canTileDrag=state.plot?.editMode&&cell&&cell.classList.contains('cell-placed')&&!cell.classList.contains('cell-hut')&&!cell.classList.contains('cell-well')&&!cell.classList.contains('cell-fire-pit');
+  let waterSurface=e.target.closest('.water-body-surface');
+  if(!waterSurface) waterSurface=resolveWaterSurfaceFromPlotCell(cell);
+  const canTileDrag=state.plot?.editMode&&cell&&cell.classList.contains('cell-placed')&&!cell.classList.contains('cell-hut')&&!cell.classList.contains('cell-well')&&!cell.classList.contains('cell-fire-pit')&&!cell.classList.contains('cell-kiln');
   if(canTileDrag){
     e.preventDefault();
     onPlotTilePointerDown(e);
@@ -1759,7 +1970,10 @@ function onPlotViewportPointerUp(e){
   try{ viewport?.releasePointerCapture(e.pointerId); }catch(_err){}
   document.getElementById('plot-viewport')?.classList.remove('panning');
   const moved=Math.hypot(e.clientX-startX,e.clientY-startY)>=PLOT_PAN_THRESHOLD;
-  if(active||moved){
+  const waterTapTarget=startWater||resolveWaterSurfaceFromPlotCell(startCell);
+  if(waterTapTarget&&!active){
+    handlePlotPointerTap(e, startCell, waterTapTarget);
+  }else if(active||moved){
     plotSuppressClick=true;
     setTimeout(()=>{ plotSuppressClick=false; }, 280);
   }else{

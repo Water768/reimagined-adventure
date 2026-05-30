@@ -37,6 +37,7 @@ function createTimedActivity(config){
     tickMs=ACTION_TICK_MS,
     outOfResourcesMsg='Out of resources.',
     cannotStartMsg='Nothing to do right now.',
+    getOutOfResourcesMsg,
     label=type,
   }=config;
 
@@ -55,7 +56,8 @@ function createTimedActivity(config){
     if(!actState.running) return;
     if(!canContinue()){
       stop();
-      showToast(outOfResourcesMsg);
+      const msg=getOutOfResourcesMsg?getOutOfResourcesMsg():outOfResourcesMsg;
+      if(msg) showToast(msg);
       return;
     }
     const ok=onAttempt();
@@ -125,6 +127,24 @@ function renderOnceContinuousButtons(opts){
     +'</div>';
 }
 
+function renderRecipeSectionPicker(opts){
+  const{
+    title,
+    open,
+    collapsedHtml,
+    openHtml,
+    wrapperClass='store-items',
+  }=opts;
+  return '<div class="'+wrapperClass+'">'
+    +'<div class="store-items-title">'+title+'</div>'
+    +(open?openHtml:collapsedHtml)
+    +'</div>';
+}
+
+function renderToggleRecipeSection(title, open, collapsedHtml, listHtml){
+  return renderRecipeSectionPicker({ title, open, collapsedHtml, openHtml:listHtml });
+}
+
 function renderRecipePickerCollapsed(opts){
   const{
     icon,
@@ -135,11 +155,11 @@ function renderRecipePickerCollapsed(opts){
     unavail=false,
     toggleOnclick,
   }=opts;
-  return '<div class="wb-log-pick wb-log-pick-collapsed'+(unavail?' unavail':'')+'" onclick="'+toggleOnclick+'">'
+  return '<div class="wb-log-pick wb-log-pick-collapsed'+(unavail?' unavail':' ready')+'" onclick="'+toggleOnclick+'">'
     +'<span class="wb-mat-icon">'+icon+'</span>'
     +'<div class="wb-mat-pick-body">'
-    +'<span class="wb-mat-pick-avail '+stockCls+'">'+stockLine+'</span>'
-    +(subtitle?'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+subtitle+'</span>':'')
+    +'<span class="wb-mat-pick-avail wb-mat-pick-line '+stockCls+'">'+stockLine+'</span>'
+    +(subtitle?wbMatSuccessLineHtml(subtitle):'')
     +(blockMessage?'<span class="wb-mat-pick-name" style="font-size:11px;color:rgba(255,110,110,0.92)">'+blockMessage+'</span>':'')
     +'</div>'
     +'<span class="wb-log-pick-chevron">▾</span>'
@@ -147,5 +167,5 @@ function renderRecipePickerCollapsed(opts){
 }
 
 function isTimedActivityActive(){
-  return cook.running||spin.running||loomProcess.running||apothProcess.running||craft.running;
+  return cook.running||spin.running||loomProcess.running||apothProcess.running||kilnProcess.running||craft.running;
 }

@@ -22,6 +22,8 @@ const EXPEDITION_MEDICINE_ITEMS=[
   { key:'improved_soothing_bandage', recovery:3 },
 ];
 
+const EXPEDITION_TORCH_COUNT_RANGE={ min:1, max:3 };
+
 const EXPEDITION_TIERS={
   short:{
     key:'short',
@@ -37,7 +39,7 @@ const EXPEDITION_TIERS={
     superRarePct:25,
     explorationXp:250,
     lootRolls:25,
-    requirements:{medicine:0,torch:0,either:['medicine','torch']},
+    requirements:{medicine:1,torch:0},
   },
   long:{
     key:'long',
@@ -167,9 +169,23 @@ function clearExpeditionHealingRolls(){
   scheduleSaveGame();
 }
 
+function clearExpeditionTorchRolls(){
+  state.exploreTorchRolls={};
+  scheduleSaveGame();
+}
+
 function clearExpeditionSupplyRolls(){
   clearExpeditionStaminaRolls();
   clearExpeditionHealingRolls();
+  clearExpeditionTorchRolls();
+}
+
+function rollExpeditionTorchesRequired(tierKey){
+  const tier=getExpeditionTier(tierKey);
+  if(!expeditionSlotNeeded(tier, 'torch')) return 0;
+  const min=EXPEDITION_TORCH_COUNT_RANGE.min;
+  const max=EXPEDITION_TORCH_COUNT_RANGE.max;
+  return min + Math.floor(Math.random()*(max-min+1));
 }
 
 function getFishIdForItemKey(itemKey){

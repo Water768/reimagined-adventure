@@ -89,3 +89,18 @@ function spinRecipeLabel(recipe){
   if(recipe.displayName) return recipe.displayName;
   return recipe.rawName+' → '+recipe.outputName;
 }
+
+function getCraftMaterialDef(key){
+  if(!key) return null;
+  if(typeof FABRIC_ITEMS!=='undefined'&&FABRIC_ITEMS[key]) return FABRIC_ITEMS[key];
+  if(typeof BOTANY_ITEMS!=='undefined'&&BOTANY_ITEMS[key]) return BOTANY_ITEMS[key];
+  if(typeof BOTANY_SEED_DEFS!=='undefined'&&BOTANY_SEED_DEFS[key]) return BOTANY_SEED_DEFS[key];
+  if(typeof BOTANY_CROP_DEFS!=='undefined'&&BOTANY_CROP_DEFS[key]) return BOTANY_CROP_DEFS[key];
+  if(typeof FIBER_DEFS!=='undefined'&&FIBER_DEFS[key]) return FIBER_DEFS[key];
+  if(typeof THREAD_DEFS!=='undefined'){
+    const thread=Object.values(THREAD_DEFS).find(t=>t.key===key);
+    if(thread) return thread;
+  }
+  if(typeof getBagItemDef==='function') return getBagItemDef(key);
+  return null;
+}

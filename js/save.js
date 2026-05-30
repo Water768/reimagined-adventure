@@ -61,9 +61,11 @@ function runAllSaveMigrations(){
     fillMissingSkillKeys();
     if(typeof migrateWell==='function') migrateWell();
     if(typeof migrateFirePit==='function') migrateFirePit();
+    if(typeof migrateKiln==='function') migrateKiln();
     migrateItemKeys();
     migratePets();
     migrateEquippedAxe();
+    migrateEquippedBag();
     migratePlot();
     migrateInterior();
     if(typeof migrateApothecaryTable==='function') migrateApothecaryTable();

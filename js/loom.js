@@ -73,6 +73,7 @@ let loomOverlayCloser=null;
 let activeLoomOverlayCell=null;
 let loomRecipeKey='simple_cloth';
 let loomRecipePickerOpen=false;
+let loomMaterialPickerOpen=false;
 const loomSelectedInputKeys={};
 
 function closeLoomOverlay(){
@@ -141,15 +142,23 @@ function selectLoomRecipe(key){
     showToast(LOOM_LINEN_LOCKED_MSG);
     return;
   }
+  if(key!==loomRecipeKey&&loomProcess.running) stopLoomWeaving();
   loomRecipeKey=key;
   loomRecipePickerOpen=false;
+  loomMaterialPickerOpen=false;
   renderLoomScreen();
 }
 
 function toggleLoomRecipePicker(){
   loomRecipePickerOpen=!loomRecipePickerOpen;
+  if(loomRecipePickerOpen) loomMaterialPickerOpen=false;
   renderLoomRecipePanel();
   renderLoomActivityButtons();
+}
+
+function toggleLoomMaterialPicker(){
+  loomMaterialPickerOpen=!loomMaterialPickerOpen;
+  renderLoomRecipePanel();
 }
 
 function recipeHasLoomMaterialChoice(recipe){
@@ -170,33 +179,63 @@ function getLoomSelectedInputOption(recipe, inp){
 }
 
 function loomMatLineForOption(opt){
-  const def=getFabricItemDef(opt.key)
-    ||getBotanyItemDef?.(opt.key)
-    ||FIBER_DEFS?.[opt.key]
-    ||THREAD_DEFS&&Object.values(THREAD_DEFS).find(t=>t.key===opt.key);
-  return formatRecipeMatLine(def?.name||opt.key, opt.qty, loomItemStock(opt.key));
-}
-
-function loomSelectedInputStockLine(recipe){
-  const inp=recipe.inputs[0];
-  const opt=getLoomSelectedInputOption(recipe, inp);
-  if(!opt) return 'No material selected';
-  const stock=loomItemStock(opt.key);
-  const stockCls=wbStockClass(stock>=opt.qty?1:0);
-  return '<span class="wb-mat-pick-avail '+stockCls+'">'+loomMatLineForOption(opt)+'</span>';
-}
-
-function loomSelectedInputHasStock(recipe){
-  const inp=recipe.inputs[0];
-  const opt=getLoomSelectedInputOption(recipe, inp);
-  if(!opt) return false;
-  return loomItemStock(opt.key)>=(opt.qty||1);
+  const key=opt?.key;
+  const qty=Math.max(1, opt?.qty||1);
+  return formatRecipeMatLine(
+    (typeof getCraftMaterialDef==='function'?getCraftMaterialDef(key)?.name:null)||key,
+    qty,
+    loomItemStock(key)
+  );
 }
 
 function selectLoomInputOption(recipeKey, inputKey){
-  loomSelectedInputKeys[recipeKey]=inputKey;
+  if(loomSelectedInputKeys[recipeKey]===inputKey&&loomMaterialPickerOpen){
+    loomMaterialPickerOpen=false;
+  }else{
+    loomSelectedInputKeys[recipeKey]=inputKey;
+    loomMaterialPickerOpen=false;
+  }
   renderLoomRecipePanel();
   renderLoomActivityButtons();
+}
+
+function loomMaterialHasAll(recipe){
+  return recipe.inputs.every(input=>{
+    const opt=pickLoomInputOption(input, recipe.id);
+    return opt&&loomItemStock(opt.key)>=(opt.qty||1);
+  });
+}
+
+function renderLoomMaterialCollapsedSummary(recipe){
+  const inp=recipe.inputs[0];
+  const hasAll=loomMaterialHasAll(recipe);
+  const block=loomRecipeBlockReason(recipe);
+  const blockMsg=loomRecipeBlockMessage(block);
+  const opt=getLoomActiveInputOpt(recipe);
+  const pct=loomSuccessPct(recipe, opt);
+  let icon=recipe.icon;
+  if(inp){
+    const sel=getLoomSelectedInputOption(recipe, inp);
+    if(sel) icon=loomInputOptionIcon(sel);
+  }
+  let bodyHtml;
+  if(recipeHasLoomMaterialChoice(recipe)){
+    const sel=getLoomSelectedInputOption(recipe, inp);
+    bodyHtml=sel
+      ?recipeMatStockLineHtml(sel.key, sel.qty||1, loomItemStock(sel.key), 'wb-mat-pick-avail')
+      :'<span class="wb-mat-pick-avail missing wb-mat-pick-line">Pick a material</span>';
+  }else{
+    bodyHtml=loomRecipeInputLinesHtml(recipe, 'wb-mat-pick-avail');
+  }
+  return '<div class="wb-log-pick wb-log-pick-collapsed'+(hasAll?' ready':(blockMsg?' unavail':''))+'" onclick="toggleLoomMaterialPicker()">'
+    +'<span class="wb-mat-icon">'+icon+'</span>'
+    +'<div class="wb-mat-pick-body">'
+    +bodyHtml
+    +wbMatSuccessLineHtml(pct+'% success')
+    +(blockMsg?'<span class="wb-mat-pick-name" style="font-size:11px;color:rgba(255,110,110,0.92)">'+blockMsg+'</span>':'')
+    +'</div>'
+    +'<span class="wb-log-pick-chevron">▾</span>'
+    +'</div>';
 }
 
 function migrateLoomRecipeKey(){
@@ -261,7 +300,7 @@ function loomInputStockLine(inp){
   if(isOneOfLoomInput(inp)){
     return inp.oneOf.map(opt=>loomMatLineForOption(opt)).join(' • ');
   }
-  const def=getFabricItemDef(inp.key)||getBotanyItemDef(inp.key)||FIBER_DEFS?.[inp.key];
+  const def=typeof getCraftMaterialDef==='function'?getCraftMaterialDef(inp.key):null;
   return formatRecipeMatLine(def?.name||inp.key, inp.qty, loomItemStock(inp.key));
 }
 
@@ -321,7 +360,7 @@ function loomInputBagConsumption(recipe){
 function canStoreLoomResult(recipe){
   const fromBag=loomInputBagConsumption(recipe);
   if(fromBag==null) return false;
-  return invTotal()-fromBag+1<=INV_CAP;
+  return invTotal()-fromBag+1<=getInvCap();
 }
 
 function loomRecipeBlockReason(recipe){
@@ -344,14 +383,31 @@ function loomRecipeBlockMessage(reason){
   return '';
 }
 
-function loomRecipePickerStockLine(recipe){
-  if(recipe.lockedOnWonkyLoom) return LOOM_LINEN_LOCKED_MSG;
-  const successLine=loomSuccessPctLabel(recipe);
-  if(recipeHasLoomMaterialChoice(recipe)) return 'options available • '+successLine;
-  const inp=recipe.inputs[0];
-  const opt=getLoomSelectedInputOption(recipe, inp);
-  if(!opt) return successLine;
-  return loomMatLineForOption(opt)+' • '+successLine;
+function loomRecipeInputLinesHtml(recipe, lineClass){
+  return recipe.inputs.map(inp=>{
+    if(isOneOfLoomInput(inp)){
+      return inp.oneOf.map(opt=>recipeMatStockLineHtml(opt.key, opt.qty||1, loomItemStock(opt.key), lineClass)).join('');
+    }
+    const qty=inp.qty||1;
+    return recipeMatStockLineHtml(inp.key, qty, loomItemStock(inp.key), lineClass);
+  }).join('');
+}
+
+function loomRecipePickerBodyHtml(recipe, locked){
+  if(locked){
+    return '<span class="wb-mat-stock" style="color:rgba(255,110,110,0.92)">'+LOOM_LINEN_LOCKED_MSG+'</span>';
+  }
+  if(recipeHasLoomMaterialChoice(recipe)){
+    return '<span class="wb-mat-stock">options available</span>'
+      +wbMatSuccessLineHtml(loomSuccessPctLabel(recipe));
+  }
+  const lines=recipe.inputs.flatMap(inp=>{
+    if(isOneOfLoomInput(inp)){
+      return inp.oneOf.map(opt=>recipeMatStockLineHtml(opt.key, opt.qty||1, loomItemStock(opt.key), 'wb-mat-stock'));
+    }
+    return [recipeMatStockLineHtml(inp.key, inp.qty||1, loomItemStock(inp.key), 'wb-mat-stock')];
+  });
+  return lines.join('')+wbMatSuccessLineHtml(loomSuccessPctLabel(recipe));
 }
 
 function renderLoomRecipePickerList(){
@@ -363,15 +419,13 @@ function renderLoomRecipePickerList(){
       const locked=rowBlock?.type==='locked';
       const selCls=loomRecipeKey===key?' selected':'';
       const unavailCls=(!locked&&canWeaveLoomRecipe(key))?'':' unavail';
-      const clickAttr=locked?'':' onclick="selectLoomRecipe(\''+key+'\')"';
-      const stockLine=loomRecipePickerStockLine(r);
+      const clickAttr=locked?'':(' onclick="'+(loomRecipeKey===key?'toggleLoomRecipePicker()':'selectLoomRecipe(\''+key+'\')')+'"');
+      const bodyHtml=loomRecipePickerBodyHtml(r, locked);
       return '<div class="wb-mat-option'+selCls+unavailCls+'"'+clickAttr+'>'
         +'<span class="wb-mat-icon">'+r.icon+'</span>'
         +'<span class="wb-mat-info">'
         +plotAddItemTitleRow(r.label, loomRecipeLevelBadge(r))
-        +'<span class="wb-mat-stock'+(locked?'':' '+wbStockClass(canWeaveLoomRecipe(key)?1:0))+'"'
-        +(locked?' style="color:rgba(255,110,110,0.92)"':'')
-        +'>'+stockLine+'</span>'
+        +'<div class="wb-mat-stock-lines">'+bodyHtml+'</div>'
         +'</span></div>';
     }).join('');
     if(!rows) return '';
@@ -385,47 +439,51 @@ function renderLoomOutputRow(recipe){
   el.hidden=false;
   const opt=getLoomActiveInputOpt(recipe);
   const pct=loomSuccessPct(recipe, opt);
-  let body=loomRecipePickerOpen?renderLoomRecipePickerList():'';
-  el.innerHTML='<div class="store-items">'
-    +'<div class="store-items-title">MAKING</div>'
-    +'<div class="wb-log-pick wb-log-pick-collapsed'+(loomRecipePickerOpen?' selected':'')+'" onclick="toggleLoomRecipePicker()">'
+  const block=loomRecipeBlockReason(recipe);
+  const blockMsg=loomRecipeBlockMessage(block);
+  const collapsedHtml='<div class="wb-log-pick wb-log-pick-collapsed'+(!canWeaveLoomRecipe(recipe.id)&&blockMsg?' unavail':'')+'" onclick="toggleLoomRecipePicker()">'
     +'<span class="wb-mat-icon">'+recipe.icon+'</span>'
     +'<div class="wb-mat-pick-body">'
     +'<span class="plot-add-item-title-row"><span class="plot-add-item-title">'+recipe.label+'</span>'
     +loomRecipeLevelBadge(recipe)+'</span>'
-    +(loomRecipePickerOpen?'':'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+pct+'% success</span>')
+    +wbMatSuccessLineHtml(pct+'% success')
+    +(blockMsg?'<span class="wb-mat-pick-name" style="font-size:11px;color:rgba(255,110,110,0.92)">'+blockMsg+'</span>':'')
     +'</div>'
-    +'<span class="wb-log-pick-chevron">'+(loomRecipePickerOpen?'▴':'▾')+'</span>'
-    +'</div>'
-    +body
+    +'<span class="wb-log-pick-chevron">▾</span>'
     +'</div>';
+  el.innerHTML=renderRecipeSectionPicker({
+    title:'MAKING',
+    open:loomRecipePickerOpen,
+    collapsedHtml,
+    openHtml:renderLoomRecipePickerList(),
+  });
 }
 
 function renderLoomMaterialPanel(recipe){
   const inp=recipe.inputs[0];
   if(!inp) return '';
+  const opt0=getLoomActiveInputOpt(recipe);
   if(isOneOfLoomInput(inp)){
     return inp.oneOf.map(opt=>{
       const stock=loomItemStock(opt.key);
       const hasEnough=stock>=(opt.qty||1);
       const selected=loomSelectedInputKeys[recipe.id]===opt.key
         ||(!loomSelectedInputKeys[recipe.id]&&getLoomSelectedInputOption(recipe, inp)?.key===opt.key);
-      return '<div class="wb-mat-option'+(selected?' selected':'')+(hasEnough?'':' unavail')+'" onclick="selectLoomInputOption(\''+recipe.id+'\',\''+opt.key+'\')">'
+      const clickAction=selected
+        ?'toggleLoomMaterialPicker()'
+        :('selectLoomInputOption(\''+recipe.id+'\',\''+opt.key+'\')');
+      return '<div class="wb-mat-option'+(selected?' selected':'')+(hasEnough?'':' unavail')+'" onclick="'+clickAction+'">'
         +'<span class="wb-mat-icon">'+loomInputOptionIcon(opt)+'</span>'
         +'<span class="wb-mat-info">'
         +'<span class="wb-mat-name">'+loomInputOptionLabel(opt)+'</span>'
-        +'<span class="wb-mat-stock '+wbStockClass(hasEnough?1:0)+'">'+loomMatLineForOption(opt)+' • '+loomSuccessPct(recipe, opt)+'% success</span>'
+        +recipeMatStockLineHtml(opt.key, opt.qty||1, stock, 'wb-mat-stock')
+        +wbMatSuccessLineHtml(loomSuccessPct(recipe, opt)+'% success')
         +'</span></div>';
     }).join('');
   }
-  const opt=getLoomSelectedInputOption(recipe, inp);
-  const inputIcon=opt?loomInputOptionIcon(opt):recipe.icon;
-  const hasStock=opt?loomItemStock(opt.key)>=(opt.qty||1):false;
-  return '<div class="wb-log-pick wb-log-pick-collapsed static'+(hasStock?'':' unavail')+'">'
-    +'<span class="wb-mat-icon">'+inputIcon+'</span>'
-    +'<div class="wb-mat-pick-body">'+loomSelectedInputStockLine(recipe)
-    +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+loomSuccessPct(recipe, opt)+'% success</span>'
-    +'</div>'
+  return '<div class="wb-mat-pick-body" style="gap:4px">'
+    +loomRecipeInputLinesHtml(recipe, 'wb-mat-pick-avail')
+    +wbMatSuccessLineHtml(loomSuccessPct(recipe, opt0)+'% success')
     +'</div>';
 }
 
@@ -483,11 +541,18 @@ function doLoomWeaveAttempt(recipeKey){
   const needQty=picked.qty||1;
   if(success){
     const invBefore=invTotal();
-    if(!consumeLoomMaterial(picked.key, needQty)){
-      showToast('Could not take ingredients.');
+    for(const input of recipe.inputs){
+      const mat=pickLoomInputOption(input, recipe.id);
+      if(!mat||!consumeLoomMaterial(mat.key, mat.qty||1)){
+        showToast('Could not take ingredients.');
+        return { ok:false };
+      }
+    }
+    const out=getLoomOutputDef(recipe.outputKey);
+    if(!out){
+      showToast('Could not weave that output.');
       return { ok:false };
     }
-    const out=getFabricItemDef(recipe.outputKey);
     invAddDirect(out.key,out.icon,out.name,1,{ pickupBaseline:invBefore });
     grantXP('tailoring',recipe.xpSuccess,null,{ deferSync:loomProcess.running, keepActivities:true });
     addActivityLog('loom-log',out.icon+' '+out.name+' woven! +'+recipe.xpSuccess+' Tailoring','success');
@@ -551,9 +616,8 @@ function stopLoomWeaving(fromActivitySwitch){
 
 function renderLoomRecipePanel(){
   migrateLoomRecipeKey();
-  const el=document.getElementById('loom-recipe-list');
-  const matSection=document.getElementById('loom-material-section');
-  if(!el) return;
+  const matEl=document.getElementById('loom-material-section');
+  if(!matEl) return;
   const recipe=getLoomRecipe(loomRecipeKey)||getLoomRecipe('simple_cloth');
   if(!recipe) return;
   const block=loomRecipeBlockReason(recipe);
@@ -561,13 +625,18 @@ function renderLoomRecipePanel(){
 
   renderLoomOutputRow(recipe);
 
-  if(matSection) matSection.hidden=!!loomRecipePickerOpen;
-
-  if(!loomRecipePickerOpen){
-    el.innerHTML=renderLoomMaterialPanel(recipe)
-      +(blockMsg?'<span class="wb-mat-pick-name" style="display:block;margin-top:6px;font-size:11px;color:rgba(255,110,110,0.92)">'+blockMsg+'</span>':'');
+  if(loomRecipePickerOpen){
+    matEl.innerHTML='';
+    matEl.hidden=true;
   }else{
-    el.innerHTML='';
+    matEl.hidden=false;
+    matEl.innerHTML=renderRecipeSectionPicker({
+      title:'MATERIAL',
+      open:loomMaterialPickerOpen,
+      collapsedHtml:renderLoomMaterialCollapsedSummary(recipe),
+      openHtml:renderLoomMaterialPanel(recipe)
+        +(blockMsg?'<span class="wb-mat-pick-name" style="display:block;margin-top:6px;font-size:11px;color:rgba(255,110,110,0.92)">'+blockMsg+'</span>':''),
+    });
   }
 
   const xpEl=document.getElementById('loom-xp-preview');

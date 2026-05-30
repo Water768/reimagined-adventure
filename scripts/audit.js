@@ -10,13 +10,13 @@ const ROOT = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(ROOT, 'Game - Draft 1.html'), 'utf8');
 
 const DATA_ORDER = [
-  'plot-layout.js', 'resources.js', 'nodes.js', 'structures.js', 'well.js', 'fire-pit.js',
+  'plot-layout.js', 'resources.js', 'nodes.js', 'structures.js', 'well.js', 'fire-pit.js', 'kiln.js',
   'interior.js', 'skills.js', 'equipment.js', 'fish.js', 'exploration.js', 'crafting.js',
   'water.js', 'furniture.js', 'botany.js', 'farming.js', 'loom.js', 'pets.js',
 ];
 const JS_ORDER = [
   'constants.js', 'data-init.js', 'state.js', 'activity-engine.js', 'navigation.js', 'panels.js',
-  'sync-ui.js', 'plot.js', 'interior-grid.js', 'activities.js', 'well.js', 'fire-pit.js',
+  'sync-ui.js', 'plot.js', 'interior-grid.js', 'activities.js', 'well.js', 'fire-pit.js', 'kiln.js',
   'farming-plot.js', 'interactions.js', 'botany-table.js', 'loom.js', 'workbench.js', 'ui.js', 'save.js', 'bootstrap.js',
 ];
 

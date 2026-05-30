@@ -4,7 +4,7 @@
 /* ═══════════════════════════════════════
    STATE
 ═══════════════════════════════════════ */
-const INV_CAP = 50;
+const INV_BASE_CAP = 50;
 const SKILL_XP_LEVEL_BASE = 100;
 const ACTION_TICK_MS = 1000;
 const PET_PASSIVE_INTERVAL_MS = 60000;

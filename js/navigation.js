@@ -4,9 +4,9 @@
 /* ═══════════════════════════════════════
    NAVIGATION
 ═══════════════════════════════════════ */
-const ALL_SCREENS=['intro-screen','exterior-screen','interior-screen','skills-screen','workbench-screen','storeroom-screen','fishing-screen','gathering-screen','woodcutting-screen','mining-screen','exploring-screen','fireplace-screen','spinningwheel-screen','loom-screen','botany-table-screen','pets-screen','well-screen','fire-pit-screen','farming-screen'];
+const ALL_SCREENS=['intro-screen','exterior-screen','interior-screen','skills-screen','workbench-screen','storeroom-screen','fishing-screen','gathering-screen','woodcutting-screen','mining-screen','exploring-screen','fireplace-screen','spinningwheel-screen','loom-screen','botany-table-screen','pets-screen','well-screen','fire-pit-screen','kiln-screen','farming-screen'];
 const HUT_OVERLAY_SCREENS=new Set(['workbench-screen','storeroom-screen','fireplace-screen','spinningwheel-screen','loom-screen','botany-table-screen','pets-screen']);
-const WORLD_OVERLAY_SCREENS=new Set(['fishing-screen','gathering-screen','woodcutting-screen','mining-screen','exploring-screen','well-screen','fire-pit-screen','farming-screen']);
+const WORLD_OVERLAY_SCREENS=new Set(['fishing-screen','gathering-screen','woodcutting-screen','mining-screen','exploring-screen','well-screen','fire-pit-screen','kiln-screen','farming-screen']);
 const OVERLAY_CLOSE_FN={
   'workbench-screen':()=>{ if(typeof closeWorkbench==='function') closeWorkbench(); },
   'storeroom-screen':()=>{ if(typeof closeStoreRoom==='function') closeStoreRoom(); },
@@ -22,6 +22,7 @@ const OVERLAY_CLOSE_FN={
   'exploring-screen':()=>{ if(typeof closeExploring==='function') closeExploring(); },
   'well-screen':()=>{ if(typeof closeWellScreen==='function') closeWellScreen(); },
   'fire-pit-screen':()=>{ if(typeof closeFirePitScreen==='function') closeFirePitScreen(); },
+  'kiln-screen':()=>{ if(typeof closeKilnScreen==='function') closeKilnScreen(); },
   'farming-screen':()=>{ if(typeof closeFarmScreen==='function') closeFarmScreen(); },
 };
 let currentScreen='intro-screen', lastHome='exterior-screen', skillsReturnScreen='exterior-screen';

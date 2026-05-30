@@ -20,7 +20,14 @@ const PET_LEVEL_UP_ITEMS = {
   dog: { 2: 'bones', 3: 'large_bone', 4: 'copper_ore', 5: 'iron_ore' },
   hedgehog: { 2: 'worms', 3: 'spiderweb', 4: 'silk', 5: 'enchanted_web' },
   dormouse: { 2: 'berries', 3: 'berries', 4: 'berries', 5: 'berries' },
+  goldfish: { 2: 'duckweed', 3: 'duckweed', 4: 'duckweed', 5: 'duckweed' },
 };
+
+/** Duckweed per goldfish level-up (Lv 2→1500, Lv 3→3000, Lv 4→4500, Lv 5→6000). */
+const GOLDFISH_LEVEL_DUCKWEED_COSTS = { 2: 1500, 3: 3000, 4: 4500, 5: 6000, 6: 7500 };
+
+/** Auto-release chance (%) while equipped at each goldfish level. */
+const GOLDFISH_AUTO_RELEASE_CHANCE = { 1: 15, 2: 30, 3: 45, 4: 60, 5: 75 };
 
 const PET_SPECIES = {
   cat: {
@@ -85,6 +92,24 @@ const PET_SPECIES = {
     description: 'A sleepy forager. Each minute, gathers random seeds and stashes them in storage.',
     namePool: ['Dozy', 'Pip', 'Nutkin', 'Sleepy', 'Hazel', 'Crumbs', 'Whisk', 'Pocket'],
   },
+  goldfish: {
+    key: 'goldfish',
+    name: 'Goldfish',
+    icon: '🐟',
+    tier: 1,
+    adoptCosts: [
+      { key: 'glass_bowl_of_water', amount: 1 },
+      { key: 'raw_goldfish', amount: 1 },
+      { key: 'duckweed', amount: 20 },
+    ],
+    adoptCostKey: 'duckweed',
+    adoptCostAmount: 22,
+    adoptCostLabel: 'supplies',
+    passiveType: 'fishAutoRelease',
+    levelUpDuckweedCosts: GOLDFISH_LEVEL_DUCKWEED_COSTS,
+    description: 'A pond companion. While following, enable auto-release on the fishing screen to instantly return native catches for Water XP.',
+    namePool: ['Bubbles', 'Flash', 'Sunny', 'Comet', 'Ripple', 'Goldie', 'Splash', 'Fin'],
+  },
 };
 
 /** Husbandry XP on adoption = item cost × species tier (separate from pet level). */
@@ -94,8 +119,33 @@ function getPetSpeciesTier(def){
 }
 
 function husbandryXpForPetAdoption(def){
+  if(petAdoptsWithMultipleCosts(def)){
+    const sum=def.adoptCosts.reduce((total,cost)=>total+(cost.amount||1), 0);
+    return sum*getPetSpeciesTier(def);
+  }
   const amount=Number(def?.adoptCostAmount)||0;
   return amount*getPetSpeciesTier(def);
+}
+
+function petAdoptsWithMultipleCosts(def){
+  return Array.isArray(def?.adoptCosts)&&def.adoptCosts.length>0;
+}
+
+function getPetAdoptCostMeta(key){
+  return getPetTreatItemMeta({ adoptCostKey: key });
+}
+
+function getPetAdoptCostStatus(def){
+  const lines=(def?.adoptCosts||[]).map(cost=>{
+    const need=cost.amount||1;
+    const stock=itemCountBagAndStore(cost.key);
+    const meta=getPetAdoptCostMeta(cost.key);
+    return { key:cost.key, need, stock, meta, ok:stock>=need };
+  });
+  return {
+    lines,
+    canAdopt:lines.length>0&&lines.every(line=>line.ok),
+  };
 }
 
 function getPetTier(pet){
@@ -220,6 +270,11 @@ function getPetTreatItemMeta(def){
     const res=MINE_RESOURCE_DEFS[key];
     return { key, icon:res.icon, name:res.name };
   }
+  if(typeof FISH_DEFS!=='undefined'){
+    for(const fish of Object.values(FISH_DEFS)){
+      if(fish.key===key) return { key, icon:fish.icon, name:fish.name };
+    }
+  }
   const stored=state.inventory[key]||state.storage[key];
   if(stored) return { key, icon:stored.icon, name:stored.name };
   return { key, icon:def.icon, name:def.adoptCostLabel||key };
@@ -328,6 +383,20 @@ function getCatShardChancePercent(level){
   return Math.min(PET_MAX_LEVEL, Math.max(1, level|0))+1;
 }
 
+function getGoldfishAutoReleaseChancePercent(level){
+  const lv=Math.min(PET_MAX_LEVEL, Math.max(1, Number(level)||1));
+  return GOLDFISH_AUTO_RELEASE_CHANCE[lv]||GOLDFISH_AUTO_RELEASE_CHANCE[1];
+}
+
+function getEquippedGoldfishPet(){
+  if(!state?.pets?.length) return null;
+  for(const id of (state.equippedPetIds||[])){
+    const pet=state.pets.find(p=>p.id===id);
+    if(pet?.type==='goldfish') return pet;
+  }
+  return null;
+}
+
 function rollNailCollectDrop(petLevel){
   const lv=Math.min(PET_MAX_LEVEL, Math.max(1, Number(petLevel)||1));
   const weights=NAIL_COLLECT_DROP_TABLES[lv]||NAIL_COLLECT_DROP_TABLES[1];
@@ -386,6 +455,9 @@ function getPetLevelBenefitPreview(pet, targetLevel){
   if(def.passiveType==='shard'){
     return 'Shard find chance rises to '+getCatShardChancePercent(targetLevel)+'% per minute while following.';
   }
+  if(def.passiveType==='fishAutoRelease'){
+    return 'Auto-release chance rises to '+getGoldfishAutoReleaseChancePercent(targetLevel)+'% on native catches at your fishing spot.';
+  }
   if(def.passiveType==='storageRedirect'){
     const pct=Math.round((DOG_STORAGE_FETCH_CHANCE+(targetLevel-1)*0.01)*100);
     return 'Storage fetch chance rises to '+pct+'% per picked-up item.';
@@ -411,6 +483,9 @@ function getPetLevelUpGainMessage(pet, newLevel){
   if(def.passiveType==='shard'){
     return pet.name+' reached Lv '+newLevel+'! Shard hunts at '+getCatShardChancePercent(newLevel)+'% per minute.';
   }
+  if(def.passiveType==='fishAutoRelease'){
+    return pet.name+' reached Lv '+newLevel+'! Auto-release at '+getGoldfishAutoReleaseChancePercent(newLevel)+'% on native catches.';
+  }
   if(def.passiveType==='storageRedirect'){
     return pet.name+' reached Lv '+newLevel+'! Fetch to storage at '+Math.round(getPetDogFetchChance(pet)*100)+'% per item.';
   }
@@ -420,6 +495,10 @@ function getPetLevelUpGainMessage(pet, newLevel){
 function getPetLevelUpItemCount(pet){
   if(petUsesSeedLevelUp(pet)){
     return getMagpieSeedLevelCost(getPetLevel(pet)+1);
+  }
+  const duckweedCosts=getPetSpeciesDef(pet?.type)?.levelUpDuckweedCosts;
+  if(duckweedCosts){
+    return duckweedCosts[getPetLevel(pet)+1]??PET_LEVEL_ITEM_COUNT;
   }
   return PET_LEVEL_ITEM_COUNT;
 }

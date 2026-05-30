@@ -218,25 +218,24 @@ function openPetPartnerScreen(){
     return;
   }
   viewingPetId=null;
+  magpiePartnerFocusSeedKey=null;
   document.getElementById('pet-list-panel').style.display='none';
   document.getElementById('pet-detail-panel').style.display='none';
   document.getElementById('pet-partner-panel').style.display='block';
   renderPetPartnerPanel();
 }
 
-function buildMagpiePartnerSeedFocusHtml(){
+function buildMagpiePartnerSeedInlineHtml(){
   const available=getSeedsWithStock();
   const status=getMagpiePartnerAdoptStatus();
-  let html='<div class="store-items" style="margin-bottom:12px">'
-    +'<div class="store-items-title">MAGPie SEED FOCUS</div>'
-    +'<div class="explore-req-submenu-section">PARTNER COST</div>'
-    +'<div class="store-line" style="margin-bottom:8px">'+MAGPIE_ADOPT_SEED_COST+' seeds to partner a Magpie</div>'
+  let html='<div class="pet-partner-seed-focus" onclick="event.stopPropagation()">'
+    +'<div class="store-items-title" style="font-size:10px;margin:8px 0 4px">SEED TYPE</div>'
     +'<button type="button" class="explore-req-submenu-item'+(!magpiePartnerFocusSeedKey?' active':'')+'" onclick="setMagpiePartnerSeedFocus(null)">'
     +'<span>Lowest tier available</span>'
     +'<span class="explore-req-submenu-meta">auto-pick cheapest seed you have</span>'
     +'</button>';
   if(!available.length){
-    html+='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:6px 0 2px">No seeds in bag or storage.</div>';
+    html+='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:4px 0 2px">No seeds in bag or storage.</div>';
   }else{
     html+=available.map(seed=>{
       const active=magpiePartnerFocusSeedKey===seed.key?' active':'';
@@ -249,7 +248,7 @@ function buildMagpiePartnerSeedFocusHtml(){
   }
   if(status.seedDef){
     const cls=wbStockClass(status.canAdopt?1:0);
-    html+='<div class="store-line '+cls+'" style="margin-top:8px">Uses: '+status.seedDef.icon+' '+status.seedDef.name+' · '+status.stock+'/'+status.need+'</div>';
+    html+='<div class="store-line '+cls+'" style="margin-top:6px;font-size:11px">Uses: '+status.seedDef.icon+' '+status.seedDef.name+' · '+status.stock+'/'+status.need+'</div>';
   }
   html+='</div>';
   return html;
@@ -280,6 +279,24 @@ function buildPetPartnerOptionHtml(def){
       +'<div class="pet-partner-desc">'+def.description+'</div>'
       +'<div class="pet-partner-cost '+costCls+'">['+status.stock+'/'+status.need+' '+seedName+']</div>'
       +'</div></div>'
+      +buildMagpiePartnerSeedInlineHtml()
+      +'</div>';
+  }
+  if(petAdoptsWithMultipleCosts(def)){
+    const status=getPetAdoptCostStatus(def);
+    const costLines=status.lines.map(line=>{
+      const costCls=line.stock>=line.need?'stock-enough':'stock-partial';
+      const name=line.meta?.name||line.key;
+      return '<div class="pet-partner-cost '+costCls+'">['+line.stock+'/'+line.need+' '+name+']</div>';
+    }).join('');
+    return '<div class="pet-partner-card" onclick="adoptPet(\''+def.key+'\')">'
+      +'<div class="pet-partner-card-header">'
+      +'<span class="pet-partner-icon">'+def.icon+'</span>'
+      +'<div class="pet-partner-card-body">'
+      +'<div class="pet-partner-name">'+def.name+'</div>'
+      +'<div class="pet-partner-desc">'+def.description+'</div>'
+      +costLines
+      +'</div></div>'
       +'</div>';
   }
   const have=itemCountBagAndStore(def.adoptCostKey);
@@ -308,7 +325,6 @@ function renderPetPartnerPanel(){
     +'<div class="wb-item-sub">Choose a companion</div></div></div>'
     +'<div class="pet-following-empty pets-partner-intro">'+PET_PARTNER_INTRO+'</div>'
     +'</div>'
-    +buildMagpiePartnerSeedFocusHtml()
     +'<div class="store-items" style="margin-bottom:12px">'
     +'<div class="store-items-title">AVAILABLE PETS</div>'
     +'<div class="pet-partner-list">'+optionsHtml+'</div>'
@@ -372,6 +388,13 @@ function getPetAbilityText(pet, equipped){
       return pet.name+' follows you and quietly hunts for '+shardLabel+' shards — about a '+pct+'% chance each minute while you play.';
     }
     return 'Equip '+pet.name+' to follow you. While equipped, they passively find '+shardLabel+' shards ('+pct+'% chance per minute). At home on the bed they rest.';
+  }
+  if(def.passiveType==='fishAutoRelease'){
+    const pct=getGoldfishAutoReleaseChancePercent(getPetLevel(pet));
+    if(equipped){
+      return pet.name+' follows you to the water — open fishing to toggle auto-release ('+pct+'% chance to instantly return native catches for Water XP).';
+    }
+    return 'Equip '+pet.name+' to follow you. On the fishing screen, toggle auto-release for a '+pct+'% chance to return native catches immediately instead of filling your bag.';
   }
   return 'Equip '+pet.name+' to follow you. No passive effect yet.';
 }
@@ -509,7 +532,7 @@ function buildPetTreatPanelHtml(pet){
     body+='<div class="store-line" style="margin-bottom:8px">Fed for today — a new request tomorrow.</div>'
       +'<div class="pet-stat-row"><span>Last treat</span><span>'+item.icon+' '+amount+' '+item.name+' · +'+xp+' Husbandry</span></div>';
   }else{
-    const stockCls=wbStockClass(stock>=amount?1:0);
+    const stockCls=wbStockClass(stock, amount);
     body+='<div class="store-line" style="margin-bottom:8px">'+escapeHtml(pet.name)+' wants a treat today.</div>'
       +'<div class="pet-treat-option'+(canFeed?'':' unavail')+'" onclick="'+(canFeed?'givePetTreat(\''+pet.id+'\')':'')+'">'
       +'<span class="pet-treat-option-icon">'+item.icon+'</span>'
@@ -611,6 +634,7 @@ function equipPet(id){
   pet.equippedSince=Date.now();
   state.equippedPetIds.push(id);
   showToast(pet.name+' will follow you now. 🐾');
+  if(pet.type==='goldfish'&&currentScreen==='fishing-screen'&&typeof renderFishAutoReleaseToggle==='function') renderFishAutoReleaseToggle();
   renderPetDetail(id);
   renderPetsScreen(id);
 }
@@ -620,6 +644,10 @@ function unequipPet(id){
   if(!pet||!isPetEquipped(id)) return;
   flushPetActiveTime(pet);
   state.equippedPetIds=state.equippedPetIds.filter(x=>x!==id);
+  if(pet.type==='goldfish'){
+    state.fishAutoRelease=false;
+    if(currentScreen==='fishing-screen'&&typeof renderFishAutoReleaseToggle==='function') renderFishAutoReleaseToggle();
+  }
   showToast(pet.name+' stays home on the dog bed.');
   renderPetDetail(id);
   renderPetsScreen(id);
@@ -757,6 +785,36 @@ function adoptPet(type){
       state.equippedPetIds.push(pet.id);
     }
     showToast(def.icon+' '+pet.name+' settles on the bed. Something shiny awaits. +'+husbandryXp+' Husbandry');
+    const partnerOpen=document.getElementById('pet-partner-panel')?.style.display!=='none';
+    if(partnerOpen) closePetPartnerScreen();
+    else renderPetsScreen();
+    syncUI();
+    return;
+  }
+  if(petAdoptsWithMultipleCosts(def)){
+    const status=getPetAdoptCostStatus(def);
+    if(!status.canAdopt){
+      const missing=status.lines.find(line=>!line.ok);
+      const name=missing?.meta?.name||missing?.key||'supplies';
+      showToast('Need '+missing.need+' '+name+'.');
+      return;
+    }
+    for(const line of status.lines){
+      if(!consumeManyFromBagOrStore(line.key, line.need)){
+        showToast('Could not pay adoption costs.');
+        return;
+      }
+    }
+    const pet=createPet(type);
+    state.pets.push(pet);
+    const husbandryXp=husbandryXpForPetAdoption(def);
+    grantXP('husbandry', husbandryXp, null);
+    if(!state.equippedPetIds) state.equippedPetIds=[];
+    if(state.equippedPetIds.length<MAX_EQUIPPED_PETS){
+      pet.equippedSince=Date.now();
+      state.equippedPetIds.push(pet.id);
+    }
+    showToast(def.icon+' '+pet.name+' settles into the bowl. Auto-release awaits at the fishing spot. +'+husbandryXp+' Husbandry');
     const partnerOpen=document.getElementById('pet-partner-panel')?.style.display!=='none';
     if(partnerOpen) closePetPartnerScreen();
     else renderPetsScreen();
@@ -968,6 +1026,7 @@ function toggleFpRecipePicker(){
 
 function selectCookRecipe(key){
   if(!COOKING_RECIPES[key]) return;
+  if(key!==cook.recipeKey&&cook.running) stopCooking();
   cook.recipeKey=key;
   fpRecipePickerOpen=false;
   renderFireplace();
@@ -999,15 +1058,15 @@ function renderCookRecipePickerList(el, pickerOpen, toggleHandler, selectHandler
   const total=itemCountBagAndStore(recipe.rawKey);
   const pct=Math.round(calcCookSuccess(recipe)*100);
   const cookLvl=Number(state.skills.cooking?.level)||1;
-  const stockCls=wbStockClass(total);
+  const stockCls=wbStockClass(total, 1);
   const stockLine=recipe.rawName+' — '+formatAvailableCount(total);
 
   if(!pickerOpen){
-    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<1?' unavail':'')+'" onclick="'+toggleHandler+'()">'
+    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<1?' unavail':' ready')+'" onclick="'+toggleHandler+'()">'
       +'<span class="wb-mat-icon">'+recipe.rawIcon+'</span>'
       +'<div class="wb-mat-pick-body">'
-      +'<span class="wb-mat-pick-avail '+stockCls+'">'+stockLine+'</span>'
-      +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+recipe.rawIcon+' → '+recipe.cookedName+' • '+pct+'% success</span>'
+      +'<span class="wb-mat-pick-avail wb-mat-pick-line '+stockCls+'">'+stockLine+'</span>'
+      +wbMatSuccessLineHtml(recipe.rawIcon+' → '+recipe.cookedName+' • '+pct+'% success')
       +'</div>'
       +'<span class="wb-log-pick-chevron">▾</span>'
       +'</div>';
@@ -1023,11 +1082,11 @@ function renderCookRecipePickerList(el, pickerOpen, toggleHandler, selectHandler
     const locked=cookLvl<r.unlockLevel;
     const selCls=cook.recipeKey===key?' selected':'';
     const unavailCls=locked||stock===0?' unavail':'';
-    const onclick=locked?'':' onclick="'+selectHandler+'(\''+key+'\')"';
+    const onclick=locked?'':(' onclick="'+(cook.recipeKey===key?toggleHandler+'()':selectHandler+'(\''+key+'\')')+'"');
     const desc=locked
       ?('🔒 Cooking Lv '+r.unlockLevel+' (same as Fishing)')
-      :('<span class="wb-mat-stock '+wbStockClass(stock)+'">'+r.rawName+' — '+formatAvailableCount(stock)+'</span>'
-        +'<span style="display:block;font-size:10px;color:var(--ui-text-dim);margin-top:2px">'+p+'% success</span>');
+      :('<span class="wb-mat-stock wb-mat-pick-line '+wbStockClass(stock, 1)+'">'+r.rawName+' — '+formatAvailableCount(stock)+'</span>'
+        +wbMatSuccessLineHtml(p+'% success'));
     return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
       +'<span class="wb-mat-icon">'+r.rawIcon+'</span>'
       +'<span class="wb-mat-info">'
@@ -1153,7 +1212,7 @@ function doCookAttempt(recipeKey){
   const success=Math.random()<rate;
   const logId=getCookActivityLogId();
   if(success){
-    if(invTotal()<INV_CAP){
+    if(invTotal()<getInvCap()){
       invAddDirect(recipe.cookedKey,recipe.cookedIcon,recipe.cookedName,1,{ pickupBaseline:invBefore });
       grantXP('cooking',recipe.xpSuccess,null,{ deferSync:cook.running });
       addActivityLog(logId,recipe.cookedIcon+' '+recipe.cookedName+' cooked! +'+recipe.xpSuccess+' Cooking','success');
@@ -1244,6 +1303,7 @@ function closeSpinningWheelScreen(){
 
 function selectSpinRecipe(key){
   if(!SPINNING_RECIPES[key]) return;
+  if(key!==spin.recipeKey&&spin.running) stopSpinning();
   spin.recipeKey=key;
   swRecipePickerOpen=false;
   renderSpinningWheel();
@@ -1255,15 +1315,15 @@ function renderSwRecipePicker(){
   const recipe=SPINNING_RECIPES[spin.recipeKey]||SPINNING_RECIPES.twisted_grass;
   const total=itemCountBagAndStore(recipe.rawKey);
   const pct=Math.round(calcSpinSuccess(recipe)*100);
-  const stockCls=wbStockClass(total);
+  const stockCls=wbStockClass(total, 1);
   const stockLine=recipe.rawName+' — '+formatAvailableCount(total);
 
   if(!swRecipePickerOpen){
-    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<1?' unavail':'')+'" onclick="toggleSwRecipePicker()">'
+    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<1?' unavail':' ready')+'" onclick="toggleSwRecipePicker()">'
       +'<span class="wb-mat-icon">'+recipe.rawIcon+'</span>'
       +'<div class="wb-mat-pick-body">'
-      +'<span class="wb-mat-pick-avail '+stockCls+'">'+stockLine+'</span>'
-      +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+spinRecipeLabel(recipe)+' • '+pct+'% success</span>'
+      +'<span class="wb-mat-pick-avail wb-mat-pick-line '+stockCls+'">'+stockLine+'</span>'
+      +wbMatSuccessLineHtml(spinRecipeLabel(recipe)+' • '+pct+'% success')
       +'</div>'
       +'<span class="wb-log-pick-chevron">▾</span>'
       +'</div>';
@@ -1287,12 +1347,13 @@ function renderSwRecipePicker(){
       const p=Math.round(calcSpinSuccess(r)*100);
       const selCls=spin.recipeKey===key?' selected':'';
       const unavailCls=stock===0?' unavail':'';
-      const onclick=stock===0?'':' onclick="selectSpinRecipe(\''+key+'\')"';
+      const onclick=stock===0?'':(' onclick="'+(spin.recipeKey===key?'toggleSwRecipePicker()':'selectSpinRecipe(\''+key+'\')')+'"');
       return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
         +'<span class="wb-mat-icon">'+r.rawIcon+'</span>'
         +'<span class="wb-mat-info">'
         +'<span class="wb-mat-name">'+spinRecipeLabel(r)+'</span>'
-        +'<span class="wb-mat-stock '+wbStockClass(stock)+'">'+r.rawName+' — '+formatAvailableCount(stock)+' • '+p+'% success</span>'
+        +'<span class="wb-mat-stock wb-mat-pick-line '+wbStockClass(stock, 1)+'">'+r.rawName+' — '+formatAvailableCount(stock)+'</span>'
+        +wbMatSuccessLineHtml(p+'% success')
         +'</span></div>';
     }).join('');
     return '<div class="sw-tier-label">'+tier.toUpperCase()+' THREAD</div>'+rows;
@@ -1321,7 +1382,7 @@ function renderSpinningWheel(){
   }
   const btnEl=document.getElementById('sw-buttons');
   if(!btnEl) return;
-  const can=canSpinRecipe(recipe);
+  const can=canSpinRecipe(recipe)&&canStoreSpinResult(recipe);
   const needSpace=!canStoreSpinResult(recipe)&&itemCountBagAndStore(recipe.rawKey)>0;
   renderOnceContinuousButtons({
     btnEl,
@@ -1344,11 +1405,21 @@ function getSpinActivity(){
     type:'spinning',
     state:spin,
     label:'Spinning',
-    canContinue:()=>canSpinRecipe(SPINNING_RECIPES[spin.recipeKey]),
+    canContinue:()=>{
+      const recipe=SPINNING_RECIPES[spin.recipeKey];
+      return recipe&&canSpinRecipe(recipe)&&canStoreSpinResult(recipe);
+    },
+    getOutOfResourcesMsg:()=>{
+      const recipe=SPINNING_RECIPES[spin.recipeKey];
+      if(recipe&&canSpinRecipe(recipe)) return 'Bag full — make room before spinning.';
+      return 'Out of that fiber.';
+    },
     cannotStartMsg:'No fibers to spin.',
     outOfResourcesMsg:'Out of that fiber.',
     onAttempt:()=>{
-      if(!canSpinRecipe(SPINNING_RECIPES[spin.recipeKey])) return false;
+      const recipe=SPINNING_RECIPES[spin.recipeKey];
+      if(!recipe||!canSpinRecipe(recipe)) return false;
+      if(!canStoreSpinResult(recipe)) return false;
       doSpinAttempt(spin.recipeKey);
     },
     onRefresh:()=>{
@@ -1370,8 +1441,14 @@ function stopSpinning(fromActivitySwitch){
 
 function spinOnce(){
   stopOtherActivities(null);
-  if(!canSpinRecipe(SPINNING_RECIPES[spin.recipeKey])){
+  const recipe=SPINNING_RECIPES[spin.recipeKey];
+  if(!recipe||!canSpinRecipe(recipe)){
     showToast('No fibers to spin.');
+    renderSpinningWheel();
+    return;
+  }
+  if(!canStoreSpinResult(recipe)){
+    showToast('Bag full — make room before spinning.');
     renderSpinningWheel();
     return;
   }
@@ -1393,7 +1470,7 @@ function doSpinAttempt(recipeKey){
   const rate=calcSpinSuccess(recipe);
   const success=Math.random()<rate;
   if(success){
-    if(rawInBag||invTotal()<INV_CAP){
+    if(rawInBag||invTotal()<getInvCap()){
       invAddDirect(recipe.outputKey,recipe.outputIcon,recipe.outputName,1,{ pickupBaseline:invBefore });
       grantXP('tailoring',recipe.xpSuccess,null,{ deferSync:spin.running });
       addActivityLog('sw-log',recipe.outputIcon+' '+recipe.outputName+' spun! +'+recipe.xpSuccess+' Tailoring','success');

@@ -312,9 +312,30 @@ function closeWBMatsPickers(){
   wbNailPickerOpen=false;
 }
 
-function wbStockClass(count, infinite){
-  if(infinite||count>0) return 'ok';
-  return 'missing';
+function wbStockClass(stock, needOrInfinite){
+  if(needOrInfinite===true||needOrInfinite===Infinity) return stock>0?'ok':'missing';
+  const need=typeof needOrInfinite==='number'&&needOrInfinite>0?needOrInfinite:1;
+  const n=Number(stock)||0;
+  if(n<=0) return 'missing';
+  if(n>=need) return 'ok';
+  const ratio=n/need;
+  if(ratio>=0.75) return 'partial-75';
+  if(ratio>=0.50) return 'partial-50';
+  if(ratio>=0.25) return 'partial-25';
+  return 'partial-low';
+}
+
+function recipeMatStockLineHtml(key, qty, stock, lineClass){
+  const def=typeof getCraftMaterialDef==='function'?getCraftMaterialDef(key):null;
+  const name=def?.name||key;
+  const q=Math.max(1, qty||1);
+  const cls=wbStockClass(stock, q);
+  const lineClassName=lineClass||'wb-mat-pick-avail';
+  return '<span class="'+lineClassName+' wb-mat-pick-line '+cls+'">'+formatRecipeMatLine(name, q, stock)+'</span>';
+}
+
+function wbMatSuccessLineHtml(text){
+  return '<span class="wb-mat-pick-success">'+text+'</span>';
 }
 
 function wbAvailLabel(count, infinite){

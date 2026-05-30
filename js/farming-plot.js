@@ -4,6 +4,7 @@
 let activeFarmInstanceId=null;
 let farmSelectedSeedKey=null;
 let farmSeedBatchQty=10;
+let farmSeedPickerOpen=false;
 let farmTimerHandle=null;
 
 function normalizeFarmConfig(cfg){
@@ -106,8 +107,18 @@ function setFarmSeedBatchQty(qty){
   if(currentScreen==='farming-screen') renderFarmScreen();
 }
 
+function toggleFarmSeedPicker(){
+  farmSeedPickerOpen=!farmSeedPickerOpen;
+  if(currentScreen==='farming-screen') renderFarmSeedList();
+}
+
 function selectFarmSeed(seedKey){
-  farmSelectedSeedKey=seedKey;
+  if(farmSelectedSeedKey===seedKey&&farmSeedPickerOpen){
+    farmSeedPickerOpen=false;
+  }else{
+    farmSelectedSeedKey=seedKey;
+    farmSeedPickerOpen=false;
+  }
   if(currentScreen==='farming-screen') renderFarmScreen();
 }
 
@@ -168,8 +179,8 @@ function harvestFarmCrop(instanceId){
     return false;
   }
   const amount=calcFarmHarvestYield(cfg.seedQty);
-  if(invTotal()+amount>INV_CAP){
-    showToast('Bag full ('+INV_CAP+'/'+INV_CAP+') — make room before harvesting.');
+  if(invTotal()+amount>getInvCap()){
+    showToast('Bag full ('+invTotal()+'/'+getInvCap()+') — make room before harvesting.');
     return false;
   }
   invAddDirect(crop.key, crop.icon, crop.name, amount);
@@ -186,12 +197,24 @@ function harvestFarmCrop(instanceId){
   return true;
 }
 
-function farmSeedStockLine(seedKey, qty){
+function farmSeedAvailLine(seedKey, qty){
   const seed=getBotanySeedDef(seedKey);
   const stock=itemCountBagAndStore(seedKey);
-  const ok=stock>=qty;
-  return '<span class="farm-seed-stock '+wbStockClass(ok?1:0)+'">'
-    +(seed?.icon||'?')+' '+(seed?.name||seedKey)+' · '+stock+'/'+qty+'</span>';
+  return '<span class="wb-mat-pick-avail wb-mat-pick-line '+wbStockClass(stock, qty)+'">'
+    +(seed?.name||seedKey)+', '+stock+'/'+qty+' available</span>';
+}
+
+function farmSeedYieldLine(seedKey, batchQty){
+  const seed=getBotanySeedDef(seedKey);
+  const crop=getBotanyCropDef(seed?.cropKey);
+  const yieldAmt=calcFarmHarvestYield(batchQty);
+  const cropName=(crop?.name||seed?.cropKey||'crop').toLowerCase();
+  return '<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'
+    +cropName+' · '+yieldAmt+' yield</span>';
+}
+
+function farmSeedStockLine(seedKey, qty){
+  return farmSeedAvailLine(seedKey, qty);
 }
 
 function renderFarmSeedList(){
@@ -199,11 +222,33 @@ function renderFarmSeedList(){
   if(!el) return;
   const botanyLvl=typeof getBotanyLevel==='function'?getBotanyLevel():1;
   const batch=getFarmSeedBatch(farmSeedBatchQty);
+
+  if(!farmSeedPickerOpen){
+    const seed=farmSelectedSeedKey?getBotanySeedDef(farmSelectedSeedKey):null;
+    if(!seed){
+      el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed unavail" onclick="toggleFarmSeedPicker()">'
+        +'<span class="wb-mat-icon">🌱</span>'
+        +'<div class="wb-mat-pick-body">'
+        +'<span class="wb-mat-pick-avail">Pick a seed</span>'
+        +'</div>'
+        +'<span class="wb-log-pick-chevron">▾</span>'
+        +'</div>';
+      return;
+    }
+    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed" onclick="toggleFarmSeedPicker()">'
+      +'<span class="wb-mat-icon">'+(seed.icon||'🌱')+'</span>'
+      +'<div class="wb-mat-pick-body">'
+      +farmSeedAvailLine(seed.key, batch.qty)
+      +farmSeedYieldLine(seed.key, batch.qty)
+      +'</div>'
+      +'<span class="wb-log-pick-chevron">▾</span>'
+      +'</div>';
+    return;
+  }
+
   el.innerHTML=getBotanySeedsSorted().map(seed=>{
     const unlocked=isBotanySeedUnlocked(seed.key, botanyLvl);
     const selected=farmSelectedSeedKey===seed.key;
-    const crop=getBotanyCropDef(seed.cropKey);
-    const yieldAmt=calcFarmHarvestYield(batch.qty);
     const badge=typeof plotAddLevelBadge==='function'
       ?plotAddLevelBadge('botany', botanyLvl, seed.requiredBotanyLevel, seed.requiredBotanyLevel)
       :'';
@@ -211,9 +256,10 @@ function renderFarmSeedList(){
     return '<button type="button" class="'+cls+'"'+(unlocked?' onclick="selectFarmSeed(\''+seed.key+'\')"':' disabled')+'>'
       +'<span class="farm-seed-icon">'+(seed.icon||'🌱')+'</span>'
       +'<span class="farm-seed-meta">'
-      +'<span class="plot-add-item-title-row"><span class="plot-add-item-title">'+seed.name+'</span>'+badge+'</span>'
-      +'<span class="farm-seed-sub">→ '+(crop?.icon||'?')+' '+(crop?.name||seed.cropKey)+' · '+yieldAmt+' yield</span>'
-      +(unlocked?farmSeedStockLine(seed.key, batch.qty):'<span class="farm-seed-sub">Need Botany Lv '+seed.requiredBotanyLevel+'</span>')
+      +(unlocked
+        ?(farmSeedAvailLine(seed.key, batch.qty)+farmSeedYieldLine(seed.key, batch.qty))
+        :('<span class="plot-add-item-title-row"><span class="plot-add-item-title">'+seed.name+'</span>'+badge+'</span>'
+          +'<span class="farm-seed-sub">Need Botany Lv '+seed.requiredBotanyLevel+'</span>'))
       +'</span></button>';
   }).join('');
 }
