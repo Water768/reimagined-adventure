@@ -25,6 +25,16 @@ function anyRegisteredActivityRunning(){
   return Object.keys(ACTIVITY_RUNNERS).some(type=>isActivityRunning(type));
 }
 
+function forEachActivityRunner(fn){
+  Object.keys(ACTIVITY_RUNNERS).forEach((type)=>fn(type, ACTIVITY_RUNNERS[type]));
+}
+
+/** Partial UI refresh for timed/world activities (no save). */
+function flushActivityUi(...extraDirty){
+  markDirty('activity','inventory','plot', ...extraDirty.filter(Boolean));
+  flushDirty();
+}
+
 function createTimedActivity(config){
   const{
     type,
@@ -49,7 +59,10 @@ function createTimedActivity(config){
     if(onStop) onStop(fromActivitySwitch);
     if(!fromActivitySwitch) clearActivity(type);
     if(onRefresh) onRefresh();
-    if(!fromActivitySwitch) syncUI();
+    if(!fromActivitySwitch){
+      markDirty('activity','inventory','plot');
+      flushDirty();
+    }
   }
 
   function runNext(){
@@ -91,7 +104,8 @@ function createTimedActivity(config){
     setActivity(type);
     actState.running=true;
     if(onRefresh) onRefresh();
-    syncUI();
+    markDirty('activity','inventory','plot');
+    flushDirty();
     runNext();
   }
 

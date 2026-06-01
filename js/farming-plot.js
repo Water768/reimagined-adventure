@@ -26,10 +26,7 @@ function setActiveFarm(instanceId){
 }
 
 function forEachFarmSlot(fn){
-  if(typeof forEachPlotOccupied!=='function') return;
-  forEachPlotOccupied((x,y,slot)=>{
-    if(getPlotTileDef(slot.typeId)?.behavior==='farm') fn(x,y,slot);
-  });
+  if(typeof forEachPlotStructureSlot==='function') forEachPlotStructureSlot('farm', fn);
 }
 
 function farmPlotExists(instanceId){
@@ -201,7 +198,7 @@ function farmSeedAvailLine(seedKey, qty){
   const seed=getBotanySeedDef(seedKey);
   const stock=itemCountBagAndStore(seedKey);
   return '<span class="wb-mat-pick-avail wb-mat-pick-line '+wbStockClass(stock, qty)+'">'
-    +(seed?.name||seedKey)+', '+stock+'/'+qty+' available</span>';
+    +formatRecipeMatLine(seed?.name||seedKey, qty, stock)+'</span>';
 }
 
 function farmSeedYieldLine(seedKey, batchQty){

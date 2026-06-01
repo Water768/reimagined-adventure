@@ -51,7 +51,7 @@ const MINE_RESOURCE_DEFS = {
   silver_ore: { key:'silver_ore', icon:'🩶', name:'Silver Ore', category:'ore',   unlockLevel:48, vibe:'Precious streaks from the deepest veins.' },
   gold_ore:   { key:'gold_ore',   icon:'🟡', name:'Gold Ore',   category:'ore',   unlockLevel:60, vibe:'Rare golden flecks — a miner\'s dream.' },
   diamond:    { key:'diamond',    icon:'💎', name:'Diamond',    category:'mineral', unlockLevel:70, vibe:'Flawless crystal — rarer than gold.' },
-  rope:       { key:'rope',       icon:'⛓️', name:'Rope',       category:'tool',  unlockLevel:1,  vibe:'Strong cord for drawing water from a well.' },
+  rope:       { key:'rope',       icon:'⛓️', name:'Rope',       category:'tool',  unlockLevel:1,  vibe:'Twisted cord from the spinning wheel — wells, washing lines, and rigging.' },
   bucket:     { key:'bucket',     icon:'🪣', name:'Bucket',         category:'tool',  unlockLevel:1,  vibe:'A bucket to haul water up from the depths.' },
   bucket_of_water:{ key:'bucket_of_water', icon:'🪣', name:'Bucket of Water', category:'consumable', unlockLevel:1, vibe:'A full bucket of cold well water.' },
   sand:       { key:'sand',       icon:'🏖️', name:'Sand',       category:'mineral', unlockLevel:1,  vibe:'Fine grit — not much use until it meets a kiln.' },
@@ -66,4 +66,7 @@ const MINE_RESOURCE_DEFS = {
   empty_fish_tank:{ key:'empty_fish_tank', icon:'🐠', name:'Empty Fish Tank', category:'tool', unlockLevel:25, vibe:'A glass tank waiting for water — and maybe a fish someday.' },
   fish_tank_of_water:{ key:'fish_tank_of_water', icon:'🐠', name:'Fish Tank of Water', category:'consumable', unlockLevel:25, vibe:'A tank filled with clear well water.' },
   old_coin:   { key:'old_coin',   icon:'🪙', name:'Old Coin',       category:'curio', unlockLevel:1,  vibe:'A worn coin from who-knows-when. Might still buy a wish.' },
+  hay:        { key:'hay',        icon:'🌾', name:'Hay',            category:'feed',  unlockLevel:1,  vibe:'Dry fodder for barn animals — not sold in shops.' },
+  uncured_cow_hide:{ key:'uncured_cow_hide', icon:'🐄', name:'Uncured Cow Hide', category:'material', unlockLevel:1, vibe:'Fresh hide from the barn — needs curing before it becomes leather.' },
+  leather:        { key:'leather',        icon:'🟤', name:'Leather',            category:'material', unlockLevel:1, vibe:'Cured hide from the washing line — tough and workable.' },
 };

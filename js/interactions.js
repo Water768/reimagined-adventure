@@ -30,7 +30,8 @@ function chopTree(event, instanceId){
   const woodlandId=getTreeWoodlandId(instanceId);
   const logKey=rollWoodlandLog(woodlandId);
   const logDef=LOG_DEFS[logKey]||LOG_DEFS.logs;
-  const axeTier = state.equipped?.tier ?? 0;
+  const axeDef=getToolStoreAxeDef();
+  const axeTier=axeDef?.tier??0;
   const successChance = CHOP_RATES[logKey]?.[axeTier] ?? 0.75;
   const success = Math.random() < successChance;
   const found=findPlotSlotByInstanceId(instanceId);
@@ -53,7 +54,7 @@ function chopTree(event, instanceId){
       const cell=document.querySelector('.plot-cell.cell-tree[data-instance-id="'+instanceId+'"]');
       if(cell) revealPlotActivityMenu('wc:'+instanceId, cell);
     }
-    syncUI();
+    flushActivityUi('screen');
     return;
   }
   if(!invAdd(logKey,logDef.icon,logDef.name,1)){
@@ -64,10 +65,16 @@ function chopTree(event, instanceId){
       const cell=document.querySelector('.plot-cell.cell-tree[data-instance-id="'+instanceId+'"]');
       if(cell) revealPlotActivityMenu('wc:'+instanceId, cell);
     }
-    syncUI();
+    flushActivityUi('screen');
     return;
   }
   addActivityLog('wc-log',logDef.icon+' Chopped '+logDef.name.toLowerCase()+'! +'+chopXp+' Woodcutting','success');
+  if(axeDef&&Math.random()<(getToolStoreBonusAxeDef()?axeDuplicateLogChance(getToolStoreBonusAxeDef().tier):0)){
+    if(invAdd(logKey,logDef.icon,logDef.name,1)){
+      addActivityLog('wc-log',logDef.icon+' Bonus log — your axe split the timber!','success');
+      showToast('🪓 Bonus '+logDef.name.toLowerCase()+' from a clean split!');
+    }
+  }
   if(logKey==='singing_oak'){
     showToast('The tree hums as it falls. Singing Oak. 🎶');
   }else if(chops===1&&logKey!=='logs'){
@@ -81,7 +88,7 @@ function chopTree(event, instanceId){
   }
   if(currentScreen==='woodcutting-screen') renderWoodcutting();
   if(instanceId) revealPlotActivityMenu('wc:'+instanceId, document.querySelector('.plot-cell.cell-tree[data-instance-id="'+instanceId+'"]'));
-  syncUI();
+  flushActivityUi('screen');
 }
 
 function spawnLeaves(event){
@@ -103,7 +110,7 @@ function openWardrobe(){
     invAdd('axe','🪓','Rusted Axe',1);
     document.querySelectorAll('.int-cell[data-int-key="wardrobe"] .int-item').forEach(el=>el.classList.remove('wardrobe-glow'));
     document.querySelectorAll('.int-cell[data-int-key="wardrobe"] .int-label').forEach(el=>el.textContent='wardrobe');
-    syncUI(); showToast("🪓 Rusted Axe added to bag! Tap it in your bag to equip.");
+    syncUI(); showToast("🪓 Rusted Axe added to bag — tap it in inventory and EQUIP to bind it to your tool store.");
   });
 }
 
@@ -472,12 +479,12 @@ function buildPetLevelPanelHtml(pet){
       if(status.usesSeeds){
         body+=buildMagpieSeedFocusHtml(pet);
         if(item){
-          body+='<div class="pet-stat-row"><span>'+item.icon+' '+item.name+' ×'+status.itemNeed+'</span>'
-            +'<span class="wb-mat-pick-avail '+itemCls+'">'+formatAvailableCount(status.stock)+'</span></div>';
+          body+='<div class="pet-stat-row"><span>Level-up cost</span>'
+            +'<span class="wb-mat-pick-avail wb-mat-pick-line '+itemCls+'">'+formatRecipeMatLine(item.name, status.itemNeed, status.stock)+'</span></div>';
         }
       }else if(item){
-        body+='<div class="pet-stat-row"><span>'+item.icon+' '+item.name+' ×'+status.itemNeed+'</span>'
-          +'<span class="wb-mat-pick-avail '+itemCls+'">'+formatAvailableCount(status.stock)+'</span></div>';
+        body+='<div class="pet-stat-row"><span>Level-up cost</span>'
+          +'<span class="wb-mat-pick-avail wb-mat-pick-line '+itemCls+'">'+formatRecipeMatLine(item.name, status.itemNeed, status.stock)+'</span></div>';
       }
       body+='<div class="store-line" style="margin-top:8px;font-size:14px">Earns 1 progress each minute while following you.</div>'
         +'<button type="button" class="wb-btn'+(status.canLevelUp?'':' pet-level-btn-disabled')+'" style="margin-top:10px;width:100%" onclick="'+(status.canLevelUp?'levelUpPet(\''+pet.id+'\');event.stopPropagation();':'')+'">Level up → Lv '+status.nextLevel+'</button>'
@@ -537,8 +544,8 @@ function buildPetTreatPanelHtml(pet){
       +'<div class="pet-treat-option'+(canFeed?'':' unavail')+'" onclick="'+(canFeed?'givePetTreat(\''+pet.id+'\')':'')+'">'
       +'<span class="pet-treat-option-icon">'+item.icon+'</span>'
       +'<span class="pet-treat-option-body">'
-      +'<span class="wb-item-name">'+item.name+' ×'+amount+'</span>'
-      +'<span class="wb-item-sub"><span class="wb-mat-pick-avail '+stockCls+'">'+formatAvailableCount(stock)+'</span> · +'+xp+' Husbandry</span>'
+      +'<span class="wb-item-name">'+formatRecipeMatLine(item.name, amount, stock)+'</span>'
+      +'<span class="wb-item-sub">+'+xp+' Husbandry</span>'
       +'</span></div>';
   }
   body+='</div>';
@@ -1059,7 +1066,7 @@ function renderCookRecipePickerList(el, pickerOpen, toggleHandler, selectHandler
   const pct=Math.round(calcCookSuccess(recipe)*100);
   const cookLvl=Number(state.skills.cooking?.level)||1;
   const stockCls=wbStockClass(total, 1);
-  const stockLine=recipe.rawName+' — '+formatAvailableCount(total);
+  const stockLine=formatRecipeMatLine(recipe.rawName, 1, total);
 
   if(!pickerOpen){
     el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<1?' unavail':' ready')+'" onclick="'+toggleHandler+'()">'
@@ -1083,14 +1090,17 @@ function renderCookRecipePickerList(el, pickerOpen, toggleHandler, selectHandler
     const selCls=cook.recipeKey===key?' selected':'';
     const unavailCls=locked||stock===0?' unavail':'';
     const onclick=locked?'':(' onclick="'+(cook.recipeKey===key?toggleHandler+'()':selectHandler+'(\''+key+'\')')+'"');
+    const lvlBadge=typeof plotAddLevelBadge==='function'
+      ?plotAddLevelBadge('cooking', cookLvl, r.unlockLevel||1, r.unlockLevel||1)
+      :'';
     const desc=locked
-      ?('🔒 Cooking Lv '+r.unlockLevel+' (same as Fishing)')
-      :('<span class="wb-mat-stock wb-mat-pick-line '+wbStockClass(stock, 1)+'">'+r.rawName+' — '+formatAvailableCount(stock)+'</span>'
+      ?'Locked (same tier as Fishing)'
+      :('<span class="wb-mat-stock wb-mat-pick-line '+wbStockClass(stock, 1)+'">'+formatRecipeMatLine(r.rawName, 1, stock)+'</span>'
         +wbMatSuccessLineHtml(p+'% success'));
     return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
       +'<span class="wb-mat-icon">'+r.rawIcon+'</span>'
       +'<span class="wb-mat-info">'
-      +'<span class="wb-mat-name">'+r.rawName+' → '+r.cookedIcon+'</span>'
+      +plotAddItemTitleRow(r.rawName+' → '+r.cookedIcon, lvlBadge)
       +'<span class="wb-mat-stock">'+desc+'</span>'
       +'</span></div>';
   }).join('');
@@ -1302,7 +1312,12 @@ function closeSpinningWheelScreen(){
 }
 
 function selectSpinRecipe(key){
-  if(!SPINNING_RECIPES[key]) return;
+  const recipe=SPINNING_RECIPES[key];
+  if(!recipe) return;
+  if(!isSpinRecipeUnlocked(recipe)){
+    showToast('Need Crafting Lv '+recipe.requiredCraftingLevel+' for that recipe.');
+    return;
+  }
   if(key!==spin.recipeKey&&spin.running) stopSpinning();
   spin.recipeKey=key;
   swRecipePickerOpen=false;
@@ -1313,17 +1328,20 @@ function renderSwRecipePicker(){
   const el=document.getElementById('sw-recipe-list');
   if(!el) return;
   const recipe=SPINNING_RECIPES[spin.recipeKey]||SPINNING_RECIPES.twisted_grass;
+  const need=spinRecipeInputQty(recipe);
   const total=itemCountBagAndStore(recipe.rawKey);
   const pct=Math.round(calcSpinSuccess(recipe)*100);
-  const stockCls=wbStockClass(total, 1);
-  const stockLine=recipe.rawName+' — '+formatAvailableCount(total);
+  const stockCls=wbStockClass(total, need);
+  const locked=!isSpinRecipeUnlocked(recipe);
+  const craftLvl=Number(state.skills.crafting?.level)||1;
+  const stockLine=formatRecipeMatLine(recipe.rawName, need, total);
 
   if(!swRecipePickerOpen){
-    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<1?' unavail':' ready')+'" onclick="toggleSwRecipePicker()">'
+    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<need?' unavail':' ready')+'" onclick="toggleSwRecipePicker()">'
       +'<span class="wb-mat-icon">'+recipe.rawIcon+'</span>'
       +'<div class="wb-mat-pick-body">'
       +'<span class="wb-mat-pick-avail wb-mat-pick-line '+stockCls+'">'+stockLine+'</span>'
-      +wbMatSuccessLineHtml(spinRecipeLabel(recipe)+' • '+pct+'% success')
+      +wbMatSuccessLineHtml(spinRecipeLabel(recipe)+(locked?'':' • '+pct+'% success'))
       +'</div>'
       +'<span class="wb-log-pick-chevron">▾</span>'
       +'</div>';
@@ -1343,20 +1361,27 @@ function renderSwRecipePicker(){
     if(!keys?.length) return '';
     const rows=keys.map(key=>{
       const r=SPINNING_RECIPES[key];
+      const need=spinRecipeInputQty(r);
       const stock=itemCountBagAndStore(r.rawKey);
+      const locked=!isSpinRecipeUnlocked(r);
       const p=Math.round(calcSpinSuccess(r)*100);
       const selCls=spin.recipeKey===key?' selected':'';
-      const unavailCls=stock===0?' unavail':'';
-      const onclick=stock===0?'':(' onclick="'+(spin.recipeKey===key?'toggleSwRecipePicker()':'selectSpinRecipe(\''+key+'\')')+'"');
+      const unavailCls=stock<need||locked?' unavail':'';
+      const canPick=stock>=need&&!locked;
+      const onclick=canPick?(' onclick="'+(spin.recipeKey===key?'toggleSwRecipePicker()':'selectSpinRecipe(\''+key+'\')')+'"'):'';
+      const lvlBadge=typeof plotAddLevelBadge==='function'
+        ?plotAddLevelBadge('crafting', craftLvl, r.requiredCraftingLevel||1, r.requiredCraftingLevel||1)
+        :'';
       return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
         +'<span class="wb-mat-icon">'+r.rawIcon+'</span>'
         +'<span class="wb-mat-info">'
-        +'<span class="wb-mat-name">'+spinRecipeLabel(r)+'</span>'
-        +'<span class="wb-mat-stock wb-mat-pick-line '+wbStockClass(stock, 1)+'">'+r.rawName+' — '+formatAvailableCount(stock)+'</span>'
-        +wbMatSuccessLineHtml(p+'% success')
+        +plotAddItemTitleRow(spinRecipeLabel(r), lvlBadge)
+        +'<span class="wb-mat-stock wb-mat-pick-line '+wbStockClass(stock, need)+'">'+formatRecipeMatLine(r.rawName, need, stock)
+        +'</span>'
+        +wbMatSuccessLineHtml(locked?'Locked':(p+'% success'))
         +'</span></div>';
     }).join('');
-    return '<div class="sw-tier-label">'+tier.toUpperCase()+' THREAD</div>'+rows;
+    return '<div class="sw-tier-label">'+spinTierSectionTitle(tier)+'</div>'+rows;
   }).join('');
 }
 
@@ -1366,14 +1391,22 @@ function toggleSwRecipePicker(){
 }
 
 function renderSpinningWheel(){
-  updateActivitySkillPill('sw', 'tailoring');
+  updateActivitySkillPill('sw', 'crafting');
   const recipe=SPINNING_RECIPES[spin.recipeKey]||SPINNING_RECIPES.twisted_grass;
   const pct=Math.round(calcSpinSuccess(recipe)*100);
   renderSwRecipePicker();
   const xpEl=document.getElementById('sw-xp-preview');
   if(xpEl){
-    xpEl.innerHTML='<span class="wb-xp-line">Success: +'+recipe.xpSuccess+' Tailoring • Fail: +'+recipe.xpFail+' Tailoring</span>'
-      +'<span class="wb-xp-line">'+pct+'% success at Tailoring Lvl '+(state.skills.tailoring?.level||1)+'</span>';
+    const need=spinRecipeInputQty(recipe);
+    const locked=!isSpinRecipeUnlocked(recipe);
+    xpEl.innerHTML='<span class="wb-xp-line">Uses '+need+'× '+recipe.rawName+' per attempt</span>'
+      +'<span class="wb-xp-line">Success: +'+recipe.xpSuccess+' Crafting • Fail: +'+recipe.xpFail+' Crafting</span>'
+      +(locked
+        ?'<span class="wb-xp-line">🔒 Need Crafting Lv '+recipe.requiredCraftingLevel+'</span>'
+        :'<span class="wb-xp-line">'+pct+'% success at Crafting Lvl '+(state.skills.crafting?.level||1)+'</span>'
+        +(recipe.kind==='rope'&&recipe.failDiscardChance>0
+          ?'<span class="wb-xp-line">On fail: chance to lose extra '+recipe.rawName.toLowerCase()+'</span>'
+          :''));
   }
   const status=document.getElementById('sw-status');
   if(status){
@@ -1461,28 +1494,54 @@ function spinContinuous(){
   getSpinActivity().startContinuous();
 }
 
+function consumeSpinRecipeInputs(recipe){
+  const qty=spinRecipeInputQty(recipe);
+  const consumed=consumeUpToFromBagOrStore(recipe.rawKey, qty);
+  return consumed>=qty;
+}
+
+function applySpinRopeFailExtras(recipe){
+  if(recipe.kind!=='rope'||!(recipe.failDiscardChance>0)) return { extra:0, msg:null };
+  if(Math.random()>=recipe.failDiscardChance) return { extra:0, msg:null };
+  const min=recipe.failExtraLossMin|0;
+  const max=Math.max(min, recipe.failExtraLossMax|0);
+  const extraWant=min+Math.floor(Math.random()*(max-min+1));
+  if(extraWant<1) return { extra:0, msg:null };
+  const extra=consumeUpToFromBagOrStore(recipe.rawKey, extraWant);
+  if(extra<1) return { extra:0, msg:null };
+  return { extra, msg:pickSpinRopeFailMsg() };
+}
+
 function doSpinAttempt(recipeKey){
   const recipe=SPINNING_RECIPES[recipeKey];
   if(!recipe||!canSpinRecipe(recipe)) return {ok:false};
   const invBefore=invTotal();
-  const rawInBag=(state.inventory[recipe.rawKey]?.count||0)>0;
-  if(!consumeOneFromBagOrStore(recipe.rawKey)) return {ok:false};
+  const hadInBag=invCount(recipe.rawKey)>=spinRecipeInputQty(recipe);
+  if(!consumeSpinRecipeInputs(recipe)) return {ok:false};
   const rate=calcSpinSuccess(recipe);
   const success=Math.random()<rate;
   if(success){
-    if(rawInBag||invTotal()<getInvCap()){
+    if(hadInBag||invTotal()<getInvCap()){
       invAddDirect(recipe.outputKey,recipe.outputIcon,recipe.outputName,1,{ pickupBaseline:invBefore });
-      grantXP('tailoring',recipe.xpSuccess,null,{ deferSync:spin.running });
-      addActivityLog('sw-log',recipe.outputIcon+' '+recipe.outputName+' spun! +'+recipe.xpSuccess+' Tailoring','success');
+      grantXP('crafting',recipe.xpSuccess,null,{ deferSync:spin.running });
+      const verb=recipe.kind==='rope'?'twisted into':'spun!';
+      addActivityLog('sw-log',recipe.outputIcon+' '+recipe.outputName+' '+verb+' +'+recipe.xpSuccess+' Crafting','success');
       return {ok:true,success:true};
     }
-    if(!state.storage[recipe.rawKey]) state.storage[recipe.rawKey]={icon:recipe.rawIcon,name:recipe.rawName,count:0};
-    state.storage[recipe.rawKey].count++;
-    addActivityLog('sw-log','Bag full — fiber returned to storage.','fail');
+    const refund=spinRecipeInputQty(recipe);
+    stackAdd(state.storage, recipe.rawKey, refund);
+    addActivityLog('sw-log','Bag full — materials returned to storage.','fail');
     return {ok:true,success:false,returned:true};
   }
-  grantXP('tailoring',recipe.xpFail,null,{ deferSync:spin.running });
-  addActivityLog('sw-log','Snapped. +' + recipe.xpFail + ' Tailoring (' + Math.round(rate*100) + '% was the odds)','fail');
+  grantXP('crafting',recipe.xpFail,null,{ deferSync:spin.running });
+  const extras=applySpinRopeFailExtras(recipe);
+  let failMsg=recipe.kind==='rope'?'The twist fails.':'Snapped.';
+  if(extras.extra>0&&extras.msg){
+    failMsg=extras.msg+' (−'+extras.extra+' '+recipe.rawName.toLowerCase()+')';
+  }else if(recipe.kind==='rope'){
+    failMsg='The twist fails — no rope this time.';
+  }
+  addActivityLog('sw-log',failMsg+' +'+recipe.xpFail+' Crafting ('+Math.round(rate*100)+'% was the odds)','fail');
   return {ok:true,success:false,broken:true};
 }
 
@@ -1641,21 +1700,20 @@ function storageCapPerType(){
 
 function depositAllToStorage(){
   if(!hasAnyStoreRoom()) return 0;
-  const cap = storageCapPerType();
   let moved = 0;
   Object.keys(state.inventory).forEach(key=>{
-    if(key === 'axe') return;
-    const item = state.inventory[key];
-    if(!item?.count) return;
-    const already = state.storage[key]?.count || 0;
-    const room = Math.max(0, cap - already);
-    const take = Math.min(room, item.count);
-    if(take <= 0) return;
-    if(!state.storage[key]) state.storage[key] = { icon:item.icon, name:item.name, count:0 };
-    state.storage[key].count += take;
-    item.count -= take;
-    moved += take;
-    if(item.count <= 0) delete state.inventory[key];
+    if(typeof isToolStoreToolKey==='function'&&isToolStoreToolKey(key)) return;
+    const inBag=stackCount(state.inventory, key);
+    if(!inBag) return;
+    const resolved=typeof resolveItemKey==='function'?resolveItemKey(key):key;
+    const already=stackCount(state.storage, resolved);
+    const cap=typeof storageCapForKey==='function'?storageCapForKey(resolved):storageCapPerType();
+    const room=Math.max(0, cap-already);
+    const take=Math.min(room, inBag);
+    if(take<=0) return;
+    stackAdd(state.storage, resolved, take);
+    stackTake(state.inventory, key, take);
+    moved+=take;
   });
   syncUI();
   return moved;
@@ -1673,18 +1731,24 @@ function closeInteriorBuildMenu(){
   }
 }
 
+function buildInteriorHomemadeUtilityFurnitureMenuItems(x,y){
+  return buildApothecaryUtilityMenuItem(x,y)+buildWonkyLoomUtilityMenuItem(x,y);
+}
+
 function buildInteriorFurnitureMenuItems(x,y){
+  const utilityHtml=buildInteriorHomemadeUtilityFurnitureMenuItems(x,y);
   const items=listAvailableFurniture();
-  if(!items.length){
+  if(!items.length&&!utilityHtml){
     return '<div class="store-line" style="padding:8px 4px;color:rgba(200,169,110,0.45)">No furniture available.</div>';
   }
-  return items.map(item=>{
+  const regularHtml=items.map(item=>{
     const stock=item.count===1?'1 available':item.count+' available';
     return '<button type="button" class="plot-add-item" onclick="placeInteriorFurniture('+x+','+y+',\''+item.key+'\')">'
       +'<span class="plot-add-item-icon">'+item.icon+'</span>'
       +'<span class="plot-add-item-name">'+item.name
       +'<span class="plot-add-item-drops">'+stock+'</span></span></button>';
   }).join('');
+  return utilityHtml+regularHtml;
 }
 
 function openInteriorBuildMenu(x,y){
@@ -1708,9 +1772,7 @@ function openInteriorBuildMenu(x,y){
       +'<span class="plot-add-item-icon">'+def.icon+'</span>'
       +'<span class="plot-add-item-name">'+def.name
       +'<span class="plot-add-item-drops">'+def.desc+'</span></span></button>';
-  }).join('')
-  +buildApothecaryUtilityMenuItem(x,y)
-  +buildWonkyLoomUtilityMenuItem(x,y);
+  }).join('');
   const furnitureHtml=buildInteriorFurnitureMenuItems(x,y);
   m.innerHTML='<div class="plot-add-title">FILL A SPACE</div>'
     +'<div class="plot-add-sub">Pick what belongs here. Duplicates are fine — go wild.</div>'
@@ -1812,6 +1874,318 @@ function closeStoreRoom(){
   lastHome='interior-screen';
 }
 
+function openToolStoreScreen(){
+  if(!hasToolStoreOnMap()){ showToast('Build a Tool Store first.'); return; }
+  if(!hasAnyStoreRoom()){ showToast('Build a Store Room first — bulk tools share that storage.'); return; }
+  toolStoreAxePickerOpen=false;
+  toolStorePickaxePickerOpen=false;
+  toolStoreRodPickerOpen=false;
+  toolStoreNetPickerOpen=false;
+  showScreen('tool-store-screen');
+  renderToolStore();
+}
+
+function closeToolStoreScreen(){
+  toolStoreAxePickerOpen=false;
+  toolStorePickaxePickerOpen=false;
+  toolStoreRodPickerOpen=false;
+  toolStoreNetPickerOpen=false;
+  showScreen('interior-screen');
+  lastHome='interior-screen';
+}
+
+let toolStoreAxePickerOpen=false;
+let toolStorePickaxePickerOpen=false;
+let toolStoreRodPickerOpen=false;
+let toolStoreNetPickerOpen=false;
+
+function openToolStoreAxePicker(){
+  if(getOwnedToolStoreAxeKeys().length<2) return;
+  toolStorePickaxePickerOpen=false;
+  toolStoreRodPickerOpen=false;
+  toolStoreNetPickerOpen=false;
+  toolStoreAxePickerOpen=true;
+  renderToolStore();
+}
+
+function openToolStorePickaxePicker(){
+  if(getOwnedToolStorePickaxeKeys().length<2) return;
+  toolStoreAxePickerOpen=false;
+  toolStoreRodPickerOpen=false;
+  toolStoreNetPickerOpen=false;
+  toolStorePickaxePickerOpen=true;
+  renderToolStore();
+}
+
+function openToolStoreRodPicker(){
+  if(getOwnedToolStoreRodKeys().length<2) return;
+  toolStoreAxePickerOpen=false;
+  toolStorePickaxePickerOpen=false;
+  toolStoreNetPickerOpen=false;
+  toolStoreRodPickerOpen=true;
+  renderToolStore();
+}
+
+function openToolStoreNetPicker(){
+  if(getOwnedToolStoreNetKeys().length<2) return;
+  toolStoreAxePickerOpen=false;
+  toolStorePickaxePickerOpen=false;
+  toolStoreRodPickerOpen=false;
+  toolStoreNetPickerOpen=true;
+  renderToolStore();
+}
+
+function toggleToolStoreAxePicker(){
+  if(getOwnedToolStoreAxeKeys().length<2) return;
+  if(toolStoreAxePickerOpen){
+    toolStoreAxePickerOpen=false;
+    renderToolStore();
+    return;
+  }
+  openToolStoreAxePicker();
+}
+
+function toggleToolStorePickaxePicker(){
+  if(getOwnedToolStorePickaxeKeys().length<2) return;
+  if(toolStorePickaxePickerOpen){
+    toolStorePickaxePickerOpen=false;
+    renderToolStore();
+    return;
+  }
+  openToolStorePickaxePicker();
+}
+
+function toggleToolStoreRodPicker(){
+  if(getOwnedToolStoreRodKeys().length<2) return;
+  if(toolStoreRodPickerOpen){
+    toolStoreRodPickerOpen=false;
+    renderToolStore();
+    return;
+  }
+  openToolStoreRodPicker();
+}
+
+function toggleToolStoreNetPicker(){
+  if(getOwnedToolStoreNetKeys().length<2) return;
+  if(toolStoreNetPickerOpen){
+    toolStoreNetPickerOpen=false;
+    renderToolStore();
+    return;
+  }
+  openToolStoreNetPicker();
+}
+
+function collapseToolStoreAxePicker(){
+  if(!toolStoreAxePickerOpen) return;
+  toolStoreAxePickerOpen=false;
+  if(currentScreen==='tool-store-screen') renderToolStore();
+}
+
+function collapseToolStorePickaxePicker(){
+  if(!toolStorePickaxePickerOpen) return;
+  toolStorePickaxePickerOpen=false;
+  if(currentScreen==='tool-store-screen') renderToolStore();
+}
+
+function collapseToolStoreRodPicker(){
+  if(!toolStoreRodPickerOpen) return;
+  toolStoreRodPickerOpen=false;
+  if(currentScreen==='tool-store-screen') renderToolStore();
+}
+
+function collapseToolStoreNetPicker(){
+  if(!toolStoreNetPickerOpen) return;
+  toolStoreNetPickerOpen=false;
+  if(currentScreen==='tool-store-screen') renderToolStore();
+}
+
+function getToolStoreTierSlotMeta(slotId){
+  if(slotId==='axe') return {
+    getOwned:getOwnedToolStoreAxeKeys,
+    getActiveDef:getActiveToolStoreAxeDef,
+    getBestDef:()=>getBestToolStoreToolForSlot('axe'),
+    byKey:AXE_BY_KEY,
+    activeKey:()=>state.toolStoreTools?.activeAxe,
+    selectFn:'setActiveToolStoreAxe',
+    canSelect:canSelectAxeForWoodcut,
+    getReqLevel:getAxeWoodcutLevel,
+    skillLabel:'Woodcutting',
+    skillKey:'woodcut',
+    toggleFn:'toggleToolStoreAxePicker',
+    openFn:'openToolStoreAxePicker',
+    isOpen:()=>toolStoreAxePickerOpen,
+  };
+  if(slotId==='pickaxe') return {
+    getOwned:getOwnedToolStorePickaxeKeys,
+    getActiveDef:getActiveToolStorePickaxeDef,
+    getBestDef:()=>getBestToolStoreToolForSlot('pickaxe'),
+    byKey:PICKAXE_BY_KEY,
+    activeKey:()=>state.toolStoreTools?.activePickaxe,
+    selectFn:'setActiveToolStorePickaxe',
+    canSelect:canSelectPickaxeForMining,
+    getReqLevel:getPickaxeMiningLevel,
+    skillLabel:'Mining',
+    skillKey:'mining',
+    toggleFn:'toggleToolStorePickaxePicker',
+    openFn:'openToolStorePickaxePicker',
+    isOpen:()=>toolStorePickaxePickerOpen,
+  };
+  if(slotId==='fishing_rod') return {
+    getOwned:getOwnedToolStoreRodKeys,
+    getActiveDef:getActiveToolStoreRodDef,
+    getBestDef:()=>getBestToolStoreToolForSlot('fishing_rod'),
+    byKey:FISHING_ROD_BY_KEY,
+    activeKey:()=>state.toolStoreTools?.activeRod,
+    selectFn:'setActiveToolStoreRod',
+    canSelect:canSelectRodForFishing,
+    getReqLevel:getRodFishingLevel,
+    skillLabel:'Fishing',
+    skillKey:'fishing',
+    toggleFn:'toggleToolStoreRodPicker',
+    openFn:'openToolStoreRodPicker',
+    isOpen:()=>toolStoreRodPickerOpen,
+  };
+  if(slotId==='fishing_net') return {
+    getOwned:getOwnedToolStoreNetKeys,
+    getActiveDef:getActiveToolStoreNetDef,
+    getBestDef:()=>getBestToolStoreToolForSlot('fishing_net'),
+    byKey:FISHING_NET_BY_KEY,
+    activeKey:()=>state.toolStoreTools?.activeNet,
+    selectFn:'setActiveToolStoreNet',
+    canSelect:canSelectNetForFishing,
+    getReqLevel:getNetFishingLevel,
+    skillLabel:'Fishing',
+    skillKey:'fishing',
+    toggleFn:'toggleToolStoreNetPicker',
+    openFn:'openToolStoreNetPicker',
+    isOpen:()=>toolStoreNetPickerOpen,
+  };
+  return null;
+}
+
+function renderToolStoreToolSquareHtml(slotId){
+  const slot=typeof slotId==='string'?TOOL_STORE_SLOT_DEFS.find(s=>s.id===slotId):slotId;
+  if(!slot) return '';
+  const tierMeta=getToolStoreTierSlotMeta(slot.id);
+  const ownedCount=tierMeta?tierMeta.getOwned().length:0;
+  const have=tierMeta?ownedCount>0:!!getToolStoreToolDisplay(slot.id);
+  const canPick=!!tierMeta&&ownedCount>=2;
+  const isPicking=!!tierMeta&&tierMeta.isOpen();
+  const pickerOpen=toolStoreAxePickerOpen||toolStorePickaxePickerOpen||toolStoreRodPickerOpen||toolStoreNetPickerOpen;
+  const isDimmed=pickerOpen&&!isPicking;
+  const canSwitch=isDimmed&&canPick&&have;
+  const tappable=canPick&&have&&(!pickerOpen||isPicking||canSwitch);
+  let click='';
+  if(isPicking){
+    click=' onclick="'+tierMeta.toggleFn+'()"';
+  }else if(canSwitch){
+    click=' onclick="'+tierMeta.openFn+'()"';
+  }else if(canPick&&have&&!pickerOpen){
+    click=' onclick="'+tierMeta.toggleFn+'()"';
+  }
+  let icon=slot.icon;
+  if(tierMeta&&have){
+    const show=isPicking?tierMeta.getActiveDef():tierMeta.getBestDef();
+    icon=show?.icon||slot.icon;
+  }else if(have){
+    icon=getToolStoreToolDisplay(slot.id)?.icon||slot.icon;
+  }
+  let stateCls='empty';
+  if(isDimmed) stateCls='empty tool-store-tool-dimmed';
+  else if(isPicking&&have) stateCls='have picking';
+  else if(have) stateCls='have';
+  const tappableCls=tappable?' tool-store-tool-tappable':'';
+  return '<div class="tool-store-tool-square '+stateCls+tappableCls+'"'+click+'>'
+    +'<span class="tool-store-tool-square-icon">'+icon+'</span>'
+    +'</div>';
+}
+
+function toolStoreToolEffectHtml(blurb){
+  if(!blurb) return '';
+  return '<span class="tool-store-tool-effect">'+blurb+'</span>';
+}
+
+function renderToolStoreTierPickerOptionsHtml(slotId){
+  const meta=getToolStoreTierSlotMeta(slotId);
+  if(!meta) return '';
+  const owned=meta.getOwned()
+    .map((key)=>meta.byKey[key])
+    .filter(Boolean)
+    .sort((a,b)=>a.tier-b.tier);
+  const activeKey=meta.activeKey();
+  const skillLvl=Number(state.skills?.[meta.skillKey]?.level)||1;
+  return '<div class="tool-store-axe-picker-body">'
+    +owned.map((def)=>{
+      const active=def.key===activeKey;
+      const canSelect=meta.canSelect(def.key);
+      const reqLv=meta.getReqLevel(def);
+      const locked=!canSelect;
+      const levelBadge=!active&&typeof plotAddLevelBadge==='function'
+        ?plotAddLevelBadge(meta.skillKey, skillLvl, reqLv, reqLv)
+        :'';
+      return '<button type="button" class="tool-store-axe-option'+(active?' active':'')+(locked?' locked':'')+'"'
+        +(locked?' disabled':' onclick="'+meta.selectFn+'(\''+def.key+'\')"')+'>'
+        +'<span class="tool-store-axe-option-row">'
+        +'<span class="tool-store-axe-option-icon">'+def.icon+'</span>'
+        +'<span class="tool-store-axe-option-name">'+def.name+'</span>'
+        +(active?'<span class="tool-store-axe-option-tag">ACTIVE</span>':levelBadge)
+        +'</span>'
+        +(active?toolStoreToolEffectHtml(def.effectBlurb):'')
+        +'</button>';
+    }).join('')
+    +'</div>';
+}
+
+function renderToolStoreAxePickerOptionsHtml(){
+  return renderToolStoreTierPickerOptionsHtml('axe');
+}
+
+function renderToolStorePickaxePickerOptionsHtml(){
+  return renderToolStoreTierPickerOptionsHtml('pickaxe');
+}
+
+function renderToolStoreRodPickerOptionsHtml(){
+  return renderToolStoreTierPickerOptionsHtml('fishing_rod');
+}
+
+function renderToolStoreNetPickerOptionsHtml(){
+  return renderToolStoreTierPickerOptionsHtml('fishing_net');
+}
+
+function renderToolStoreToolsHtml(){
+  const axePicker=toolStoreAxePickerOpen&&getOwnedToolStoreAxeKeys().length>=2;
+  const pickaxePicker=toolStorePickaxePickerOpen&&getOwnedToolStorePickaxeKeys().length>=2;
+  const rodPicker=toolStoreRodPickerOpen&&getOwnedToolStoreRodKeys().length>=2;
+  const netPicker=toolStoreNetPickerOpen&&getOwnedToolStoreNetKeys().length>=2;
+  let html='<div class="store-items-title">TOOLS</div>'
+    +'<div class="tool-store-tools-row'+(axePicker||pickaxePicker||rodPicker||netPicker?' picker-open':'')+'">'
+    +TOOL_STORE_SLOT_DEFS.map((slot)=>renderToolStoreToolSquareHtml(slot.id)).join('')
+    +'</div>';
+  if(axePicker) html+=renderToolStoreAxePickerOptionsHtml();
+  if(pickaxePicker) html+=renderToolStorePickaxePickerOptionsHtml();
+  if(rodPicker) html+=renderToolStoreRodPickerOptionsHtml();
+  if(netPicker) html+=renderToolStoreNetPickerOptionsHtml();
+  return html;
+}
+
+function renderToolStore(){
+  const titleEl=document.getElementById('tool-store-screen-title')
+    ||document.querySelector('#tool-store-screen .top-bar-title');
+  if(titleEl){
+    titleEl.textContent=INTERIOR_ROOM_DEFS.tool_store?.name||'Tool Storage';
+  }
+  const toolsEl=document.getElementById('tool-store-tools-grid');
+  const listEl=document.getElementById('tool-store-items-list');
+  if(toolsEl) toolsEl.innerHTML=renderToolStoreToolsHtml();
+  if(!listEl) return;
+  const bulkDefs=typeof listToolStoreBulkSlotDefs==='function'?listToolStoreBulkSlotDefs():[];
+  listEl.innerHTML=bulkDefs.map((slot)=>{
+    const count=storageCount(slot.key);
+    const slotCap=storageCapForKey(slot.key);
+    return '<div class="store-item-row"><span>'+slot.icon+' '+slot.name+'</span><span>x'+count+'/'+slotCap+'</span></div>';
+  }).join('');
+}
+
 let storeShelfMenuOpen=false;
 
 function toggleStoreShelfMenu(){
@@ -1834,17 +2208,30 @@ function renderStoreRoom(){
   const sumEl=document.getElementById('store-summary');
   if(sumEl){
     const roomShelves=[1,2,3,4].filter(slot=>getShelfTier(slot, viewingStoreRoomId)>0).length;
-    sumEl.innerHTML='<div class="store-summary-tap'+(storeShelfMenuOpen?' open':'')+'" onclick="toggleStoreShelfMenu()">'
-      +'<div class="store-line">Capacity per item type: '+cap+'</div>'
-      +'<div class="store-line">This room: '+roomCap+' ('+roomShelves+' / 4 shelves)</div>'
+    let html='<div class="store-summary-tap'+(storeShelfMenuOpen?' open':'')+'" onclick="toggleStoreShelfMenu()">'
+      +'<div class="store-line">Capacity per item type: '+cap+'</div>';
+    if(typeof hasToolStoreOnMap==='function'&&hasToolStoreOnMap()){
+      html+='<div class="store-line">Tool store extends bulk items (buckets, materials, nails)</div>';
+    }
+    html+='<div class="store-line">This room: '+roomCap+' ('+roomShelves+' / 4 shelves)</div>'
       +'<div class="store-summary-hint">Shelf slots · tap to '+(storeShelfMenuOpen?'hide':'manage')+' '+(storeShelfMenuOpen?'▴':'▾')+'</div>'
       +'</div>';
+    sumEl.innerHTML=html;
   }
   const listEl=document.getElementById('store-items-list');
   if(listEl){
-    const rows=Object.values(state.storage).filter(i=>i.count>0);
+    const byKey={};
+    Object.keys(state.storage).forEach((key)=>{
+      const count=stackCount(state.storage,key);
+      if(count<=0) return;
+      const resolved=typeof resolveItemKey==='function'?resolveItemKey(key):key;
+      byKey[resolved]=(byKey[resolved]||0)+count;
+    });
+    const rows=Object.keys(byKey)
+      .map((key)=>({ key, count:byKey[key], def:getItemDef(key) }))
+      .filter((r)=>r.count>0);
     listEl.innerHTML=rows.length
-      ?rows.map(i=>'<div class="store-item-row"><span>'+i.icon+' '+i.name+'</span><span>x'+i.count+'/'+cap+'</span></div>').join('')
+      ?rows.map((r)=>'<div class="store-item-row"><span>'+r.def.icon+' '+r.def.name+'</span><span>x'+r.count+'/'+storageCapForKey(r.key)+'</span></div>').join('')
       :'<div class="store-line" style="color:rgba(200,169,110,0.45)">Nothing stored yet.</div>';
   }
   const shelfSection=document.getElementById('store-shelves-section');

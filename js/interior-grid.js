@@ -10,7 +10,7 @@ const INT_CELL_PX = 92;
 const INT_WALL_PX = 10;
 const INT_DRAG_ICON = {
   wardrobe:'🚪', fireplace:'🔥', picture:'🖼️', workbench:'🪚',
-  build:'＋', dogbed:'🛏️', doorway:'🚶', storeroom:'🗄️', spinningwheel:'🎡', apothecary_table:'⚗️', wonky_loom:'🧵', empty:'',
+  build:'＋', dogbed:'🛏️', doorway:'🚶', storeroom:'🗄️', tool_store:'🧰', spinningwheel:'🎡', apothecary_table:'⚗️', wonky_loom:'🧵', empty:'',
 };
 let intPanDrag = null;
 let intSwapDrag = null;
@@ -97,6 +97,59 @@ function getStoreRoomCapacity(storeRoomId){
   return cap;
 }
 
+function countToolStoresOnMap(){
+  migrateInterior();
+  let n=0;
+  Object.values(state.interior?.cells||{}).forEach(key=>{
+    if(interiorCellType(key)==='tool_store') n++;
+  });
+  return n;
+}
+
+function hasToolStoreOnMap(){
+  return countToolStoresOnMap()>0;
+}
+
+function toolStoreBulkBonusForKey(key){
+  const stores=countToolStoresOnMap();
+  if(!stores) return 0;
+  const resolved=typeof resolveItemKey==='function'?resolveItemKey(key):key;
+  if(typeof NAIL_TYPES!=='undefined'&&NAIL_TYPES[resolved]&&!NAIL_TYPES[resolved].infinite){
+    return stores*(TOOL_STORE_NAIL_BULK_CAP|0||5000);
+  }
+  const bulk=typeof TOOL_STORE_BULK_CAPS!=='undefined'?TOOL_STORE_BULK_CAPS[resolved]:0;
+  return bulk?stores*bulk:0;
+}
+
+function storageCapForKey(key){
+  if(!hasAnyStoreRoom()) return 0;
+  const resolved=typeof resolveItemKey==='function'?resolveItemKey(key):key;
+  return storageCapPerType()+toolStoreBulkBonusForKey(resolved);
+}
+
+function listToolStoreBulkSlotDefs(){
+  const defs=[];
+  if(typeof TOOL_STORE_BULK_CAPS!=='undefined'){
+    Object.entries(TOOL_STORE_BULK_CAPS).forEach(([key,bonusPerStore])=>{
+      const def=typeof getItemDef==='function'?getItemDef(key):{ key, icon:'📦', name:key };
+      defs.push({ key, icon:def.icon, name:def.name, bonusPerStore });
+    });
+  }
+  if(typeof NAIL_TYPES!=='undefined'){
+    Object.entries(NAIL_TYPES).forEach(([key,n])=>{
+      if(n.infinite) return;
+      defs.push({ key, icon:n.icon, name:n.name, bonusPerStore:TOOL_STORE_NAIL_BULK_CAP|0||5000, isNail:true });
+    });
+  }
+  return defs;
+}
+
+function isToolStoreBulkKey(key){
+  const resolved=typeof resolveItemKey==='function'?resolveItemKey(key):key;
+  if(typeof NAIL_TYPES!=='undefined'&&NAIL_TYPES[resolved]&&!NAIL_TYPES[resolved].infinite) return true;
+  return !!(typeof TOOL_STORE_BULK_CAPS!=='undefined'&&TOOL_STORE_BULK_CAPS[resolved]);
+}
+
 function syncStoreRoomsWithInterior(){
   migrateInterior();
   const purged=new Set(state.purgedStoreRoomIds||[]);
@@ -118,7 +171,7 @@ function syncStoreRoomsWithInterior(){
       if(typeof craft!=='undefined'&&craft.storeRoomId===id) craft.storeRoomId=null;
       delete state.storeRooms[id];
     });
-    trimStorageToCapacity(listStoreRoomIdsOnMap().reduce((sum,id)=>sum+getStoreRoomCapacity(id),0));
+    trimStorageToCapacity();
     state._storeRoomsOrphansRemoved=(state._storeRoomsOrphansRemoved||0)+stillOrphan.length;
   }
 
@@ -508,15 +561,20 @@ function interiorRemoveBtnHtml(x,y){
     :'';
 }
 
-function trimStorageToCapacity(cap){
+function trimStorageToCapacity(){
   let trimmed=0;
   Object.keys(state.storage).forEach(key=>{
-    const item=state.storage[key];
-    if(!item?.count) return;
-    if(item.count>cap){
-      trimmed+=item.count-cap;
-      item.count=cap;
-      if(item.count<=0) delete state.storage[key];
+    const have=stackCount(state.storage, key);
+    if(!have) return;
+    const cap=typeof storageCapForKey==='function'?storageCapForKey(key):0;
+    if(cap<=0){
+      trimmed+=have;
+      stackSet(state.storage, key, 0);
+      return;
+    }
+    if(have>cap){
+      trimmed+=have-cap;
+      stackSet(state.storage, key, cap);
     }
   });
   return trimmed;
@@ -529,8 +587,7 @@ function purgeStoreRoomById(id){
   delete state.storeRooms[id];
   if(viewingStoreRoomId===id) viewingStoreRoomId=listStoreRoomIdsOnMap()[0]||null;
   if(typeof craft!=='undefined'&&craft.storeRoomId===id) craft.storeRoomId=null;
-  const cap=listStoreRoomIdsOnMap().reduce((sum,rid)=>sum+getStoreRoomCapacity(rid),0);
-  return trimStorageToCapacity(cap);
+  return trimStorageToCapacity();
 }
 
 function unpurgeStoreRoomId(id){
@@ -711,13 +768,27 @@ function removeInteriorRoom(x,y, opts){
       delete state.storeRooms[storeRoomId];
       if(viewingStoreRoomId===storeRoomId) viewingStoreRoomId=listStoreRoomIdsOnMap()[0]||null;
       if(typeof craft!=='undefined'&&craft.storeRoomId===storeRoomId) craft.storeRoomId=null;
-      trimmed=trimStorageToCapacity(listStoreRoomIdsOnMap().reduce((sum,rid)=>sum+getStoreRoomCapacity(rid),0));
+      trimmed=trimStorageToCapacity();
     }
     state._skipStoreRoomMigrateOnce=true;
     renderInteriorGrid();
     syncUI();
     if(trimmed>0) showToast('Store room removed. Excess stock destroyed ('+trimmed+' item'+(trimmed===1?'':'s')+' over capacity).');
     else showToast('Store room removed.');
+    return;
+  }
+
+  if(type==='tool_store'){
+    if(currentScreen==='tool-store-screen'){
+      showScreen('interior-screen');
+      lastHome='interior-screen';
+    }
+    state.interior.cells=next;
+    const trimmed=trimStorageToCapacity();
+    renderInteriorGrid();
+    syncUI();
+    if(trimmed>0) showToast('Tool store removed. Excess stock destroyed ('+trimmed+' item'+(trimmed===1?'':'s')+' over capacity).');
+    else showToast('Tool store removed.');
     return;
   }
 
@@ -934,6 +1005,7 @@ function migrateStoreRoomSlot(){
 function intDragIcon(cellKey){
   const {type, instanceId}=parseInteriorCellKey(cellKey);
   if(type==='storeroom') return '🗄️';
+  if(type==='tool_store') return '🧰';
   if(type==='furniture'){
     return getFurnitureDef(instanceId)?.icon||'🪑';
   }
@@ -1268,6 +1340,13 @@ function refreshInteriorCell(cellKey, el, x, y){
     el.dataset.intKey='workbench';
     el.innerHTML=interiorRemoveBtnHtml(x,y)+'<div class="int-item">🪚</div><div class="int-label">workbench</div>';
     el.onclick=()=>{ if(intSuppressClick||isInteriorBuildMode()) return; openWorkbench(); };
+    return;
+  }
+
+  if(type==='tool_store'){
+    el.dataset.intKey='tool_store';
+    el.innerHTML=interiorRemoveBtnHtml(x,y)+'<div class="int-item">🧰</div><div class="int-label">tool store</div>';
+    el.onclick=()=>{ if(intSuppressClick||isInteriorBuildMode()) return; openToolStoreScreen(); };
     return;
   }
 

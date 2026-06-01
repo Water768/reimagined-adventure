@@ -157,13 +157,13 @@ function getPetTier(pet){
 const PET_TREAT_AMOUNT_MIN=1;
 const PET_TREAT_AMOUNT_MAX=50;
 
-/** Hedgehog nail drop weights per pet level — iron / copper / forged / ironbark / gilded (%). */
+/** Hedgehog nail drop weights per pet level — copper / bronze / iron / steel / titanium / gilded (%). */
 const NAIL_COLLECT_DROP_TABLES={
-  1:[50,40,6,3,1],
-  2:[0,80,10,8,2],
-  3:[0,0,60,35,5],
-  4:[0,0,0,90,10],
-  5:[0,0,0,20,80],
+  1:[50,40,6,3,0,1],
+  2:[0,80,10,8,2,0],
+  3:[0,0,60,35,5,0],
+  4:[0,0,0,90,10,0],
+  5:[0,0,0,20,0,80],
 };
 
 function getPetTreatDayKey(date){
@@ -275,8 +275,10 @@ function getPetTreatItemMeta(def){
       if(fish.key===key) return { key, icon:fish.icon, name:fish.name };
     }
   }
-  const stored=state.inventory[key]||state.storage[key];
-  if(stored) return { key, icon:stored.icon, name:stored.name };
+  if(typeof getItemDef==='function'&&(invCount(key)>0||storageCount(key)>0)){
+    const itemDef=getItemDef(key);
+    return { key, icon:itemDef.icon, name:itemDef.name };
+  }
   return { key, icon:def.icon, name:def.adoptCostLabel||key };
 }
 

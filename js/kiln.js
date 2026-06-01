@@ -4,7 +4,9 @@
 let activeKilnInstanceId=null;
 let kilnTab='clay';
 let kilnRecipePickerOpen=false;
-const kilnRecipeByTab={ clay:'fire_brick', melting:'molten_glass', blow:'blow_vial' };
+let kilnMetalTier='copper';
+const kilnRecipeByTab={ clay:'fire_brick', melting:'molten_glass', blow:'blow_vial', metal:'smelt_copper_nails' };
+const kilnRecipeByMetalTier={ copper:'smelt_copper_nails', bronze:'smelt_bronze_nails' };
 
 function normalizeKilnConfig(cfg){
   if(!cfg) return { stone:0, clay:0, bricks:0, mouldIron:0, fuelLogs:0, fuelAshwood:0, fuelTeak:0, fired:false, moulded:false, fueled:false, lit:false, freePlaced:false };
@@ -55,10 +57,7 @@ function resolveKilnInstanceId(eventOrCell){
 }
 
 function forEachKilnSlot(fn){
-  if(typeof forEachPlotOccupied!=='function') return;
-  forEachPlotOccupied((x,y,slot)=>{
-    if(getPlotTileDef(slot.typeId)?.behavior==='kiln') fn(x,y,slot);
-  });
+  if(typeof forEachPlotStructureSlot==='function') forEachPlotStructureSlot('kiln', fn);
 }
 
 function countKilnsOnPlot(){
@@ -130,8 +129,11 @@ function migrateKiln(){
   if(state.kilnUnlocked==null) state.kilnUnlocked=false;
   if(state.kilnLitUnlocked==null) state.kilnLitUnlocked=false;
   if(state.kilnLastAction==null) state.kilnLastAction=null;
+  if(!state.kilnLastMetalTier) state.kilnLastMetalTier='copper';
+  if(!state.kilnMetalRecipeByTier) state.kilnMetalRecipeByTier={};
+  if(state.kilnQuickAction==null) state.kilnQuickAction='recipe';
   forEachKilnSlot((x,y,slot)=>{
-    normalizeKilnConfig(getPlotConfig(slot.instanceId));
+    normalizeKilnConfig(getPlotConfig(slot.instanceId,'kiln',slot.typeId));
     const cfg=getKilnConfig(slot.instanceId);
     if(isKilnBuildComplete(cfg)) state.kilnUnlocked=true;
     if(isKilnLit(cfg)) state.kilnLitUnlocked=true;
@@ -173,7 +175,7 @@ function completeKilnFiring(instanceId){
   instanceId=instanceId||activeKilnInstanceId;
   const cfg=getKilnConfig(instanceId);
   if(!cfg) return;
-  const showBanner=!cfg.fired;
+  const showBanner=!state.kilnUnlocked;
   KILN_BUILD_MATERIALS.forEach(m=>{ cfg[m.countKey]=m.required; });
   cfg.fired=true;
   unlockKilns();
@@ -184,22 +186,26 @@ function completeKilnFiring(instanceId){
     syncUI();
   };
   if(showBanner){
-    showFoundBanner(
-      'KILN FIRED!',
-      '🏺',
-      'The simple kiln stands — add iron ore for moulds, then stock it with simple-tier logs.'+structureCompleteBonusBannerSuffix('kiln'),
-      'GOT IT',
-      refresh
-    );
+    showStructureBuiltBanner({
+      bonusKey:'kiln',
+      title:'KILN FIRED!',
+      icon:'🏺',
+      body:'The simple kiln stands — add iron ore for moulds, then stock it with simple-tier logs.',
+      btnText:'GOT IT',
+      cb:refresh,
+    });
+  }else{
+    refresh();
   }
-  refresh();
 }
 
 function completeKilnMoulds(instanceId){
   instanceId=instanceId||activeKilnInstanceId;
   const cfg=getKilnConfig(instanceId);
   if(!cfg||!cfg.fired) return;
-  const showBanner=!cfg.moulded;
+  const showBanner=typeof isStructureStageBonusPending==='function'
+    ?isStructureStageBonusPending('kiln_moulded')
+    :!cfg.moulded;
   cfg.mouldIron=KILN_MOULD_IRON_REQUIRED;
   cfg.moulded=true;
   scheduleSaveGame();
@@ -209,22 +215,26 @@ function completeKilnMoulds(instanceId){
     syncUI();
   };
   if(showBanner){
-    showFoundBanner(
-      'MOULDS FITTED!',
-      '🏺',
-      'Crude iron moulds line the mouth — stock the kiln with simple-tier logs before lighting it.',
-      'GOT IT',
-      refresh
-    );
+    showStructureBuiltBanner({
+      bonusKey:'kiln_moulded',
+      title:'MOULDS FITTED!',
+      icon:'🏺',
+      body:'Crude iron moulds line the mouth — stock the kiln with simple-tier logs before lighting it.',
+      btnText:'GOT IT',
+      cb:refresh,
+    });
+  }else{
+    refresh();
   }
-  refresh();
 }
 
 function completeKilnFuel(instanceId){
   instanceId=instanceId||activeKilnInstanceId;
   const cfg=getKilnConfig(instanceId);
   if(!cfg||!cfg.moulded) return;
-  const showBanner=!cfg.fueled;
+  const showBanner=typeof isStructureStageBonusPending==='function'
+    ?isStructureStageBonusPending('kiln_fueled')
+    :!cfg.fueled;
   KILN_FUEL_LOGS.forEach(l=>{ cfg[l.countKey]=KILN_FUEL_LOG_REQUIRED; });
   cfg.fueled=true;
   scheduleSaveGame();
@@ -234,15 +244,17 @@ function completeKilnFuel(instanceId){
     syncUI();
   };
   if(showBanner){
-    showFoundBanner(
-      'KILN STOCKED!',
-      '🪵',
-      'Simple-tier logs fill the firebox — light the kiln when your Fire skill is ready.',
-      'GOT IT',
-      refresh
-    );
+    showStructureBuiltBanner({
+      bonusKey:'kiln_fueled',
+      title:'KILN STOCKED!',
+      icon:'🪵',
+      body:'Simple-tier logs fill the firebox — light the kiln when your Fire skill is ready.',
+      btnText:'GOT IT',
+      cb:refresh,
+    });
+  }else{
+    refresh();
   }
-  refresh();
 }
 
 function lightKiln(instanceId){
@@ -266,13 +278,14 @@ function lightKiln(instanceId){
     syncUI();
   };
   if(showBanner){
-    showFoundBanner(
-      'KILN LIT!',
-      '🔥',
-      'The simple kiln roars to life — fire clay, melt glass, and shape vials.',
-      'GOT IT',
-      refresh
-    );
+    showStructureBuiltBanner({
+      bonusKey:'kiln_lit',
+      title:'KILN LIT!',
+      icon:'🔥',
+      body:'The simple kiln roars to life — fire clay, melt glass, and shape vials.',
+      btnText:'GOT IT',
+      cb:refresh,
+    });
   }else{
     showToast('You strike a flame. The kiln glows hot.');
     refresh();
@@ -351,21 +364,27 @@ function placeKilnMouldIron(event, instanceId){
   instanceId=instanceId||activeKilnInstanceId;
   const cfg=getKilnConfig(instanceId);
   if(!cfg||!cfg.fired||cfg.moulded||cfg.freePlaced) return false;
-  if((cfg.mouldIron|0)>=KILN_MOULD_IRON_REQUIRED){
+  const current=cfg.mouldIron|0;
+  if(current>=KILN_MOULD_IRON_REQUIRED){
     completeKilnMoulds(instanceId);
     return false;
   }
-  if(itemCountBagAndStore('iron_ore')<1){
+  const needed=KILN_MOULD_IRON_REQUIRED-current;
+  const available=itemCountBagAndStore('iron_ore');
+  const amount=Math.min(needed, available);
+  if(amount<1){
     showToast('You need iron ore for the crude moulds.');
     return false;
   }
-  if(!consumeOneFromBagOrStore('iron_ore')){
+  const consumed=consumeUpToFromBagOrStore('iron_ore', amount);
+  if(consumed<1){
     showToast('You need iron ore for the crude moulds.');
     return false;
   }
-  cfg.mouldIron=(cfg.mouldIron|0)+1;
-  grantXP('architecture', structureArchXpForMaterial('iron_ore'), null);
-  if(isKilnMoulded(cfg)) completeKilnMoulds(instanceId);
+  cfg.mouldIron=current+consumed;
+  const willComplete=isKilnMoulded(cfg);
+  grantXP('architecture', structureArchXpForMaterial('iron_ore')*consumed, null, willComplete?{deferLevelUp:true}:null);
+  if(willComplete) completeKilnMoulds(instanceId);
   else{
     if(typeof updateKilnCells==='function') updateKilnCells();
     if(currentScreen==='kiln-screen') renderKilnScreen();
@@ -389,11 +408,15 @@ function kilnSkillLevelBadge(skillKey, current, required){
 
 function kilnSkillLevelBadges(action){
   if(!action?.skills) return '';
-  return '<span class="kiln-skill-level-stack">'
-    +Object.entries(action.skills).map(([skillKey, required])=>
-      kilnSkillLevelBadge(skillKey, getKilnSkillLevel(skillKey), required)
-    ).join('')
-    +'</span>';
+  const badges=Object.entries(action.skills).map(([skillKey, required])=>{
+    const current=getKilnSkillLevel(skillKey);
+    if(typeof plotAddLevelBadge==='function'){
+      return plotAddLevelBadge(skillKey, current, required, required);
+    }
+    return kilnSkillLevelBadge(skillKey, current, required);
+  }).filter(Boolean);
+  if(!badges.length) return '';
+  return '<span class="kiln-skill-level-stack">'+badges.join('')+'</span>';
 }
 
 function kilnRecipeTitleHtml(action){
@@ -463,6 +486,14 @@ function doKilnActionAttempt(actionId){
     }
   }
   for(const output of action.outputs||[]){
+    if(output.isNail&&typeof grantNailToStorage==='function'){
+      let added=0;
+      for(let i=0;i<(output.count|0);i++){
+        if(grantNailToStorage(output.key)) added++;
+      }
+      if(added<(output.count|0)) return { ok:false, check:{ ok:false, reason:'full' } };
+      continue;
+    }
     const added=invAdd(output.key, output.icon, output.name, output.count);
     if(!added) return { ok:false, check:{ ok:false, reason:'full' } };
   }
@@ -470,18 +501,30 @@ function doKilnActionAttempt(actionId){
     grantXP('fire', action.xp.fire, null, { deferSync:kilnProcess.running, keepActivities:true });
     if(action.glassblow) grantXP('air', action.xp.fire, null, { deferSync:kilnProcess.running, keepActivities:true });
   }
+  if(action.xp?.crafting){
+    grantXP('crafting', action.xp.crafting, null, { deferSync:kilnProcess.running, keepActivities:true });
+  }
+  if(action.xp?.metalworking){
+    grantXP('metalworking', action.xp.metalworking, null, { deferSync:kilnProcess.running, keepActivities:true });
+  }
   if(action.xp?.architecture) grantXP('architecture', action.xp.architecture, null, { deferSync:kilnProcess.running, keepActivities:true });
-  flashSkillPill('fire');
-  if(action.glassblow) flashSkillPill('air');
+  flashSkillPill(getKilnActivitySkillKey());
   state.kilnLastAction=actionId;
   kilnTab=getKilnTabForAction(actionId);
   kilnRecipeByTab[kilnTab]=actionId;
+  if(kilnTab==='metal'){
+    const tier=getKilnMetalTierForAction(actionId);
+    kilnMetalTier=tier;
+    state.kilnLastMetalTier=tier;
+    kilnRecipeByMetalTier[tier]=actionId;
+    state.kilnMetalRecipeByTier[tier]=actionId;
+  }
   scheduleSaveGame();
   const shardBonus=tryKilnGlassblowShardBonus(action);
-  let logMsg='🏺 '+action.logOk
-    +(action.xp?.fire?' +'+action.xp.fire+' Fire':'')
-    +(action.glassblow&&action.xp?.fire?' +'+action.xp.fire+' Air':'')
-    +(action.xp?.architecture?' +'+action.xp.architecture+' Architecture':'');
+  let logMsg='🏺 '+action.logOk;
+  if(action.xp?.crafting) logMsg+=' +'+action.xp.crafting+' Crafting';
+  if(action.xp?.metalworking) logMsg+=' +'+action.xp.metalworking+' Metalworking';
+  if(action.xp?.architecture) logMsg+=' +'+action.xp.architecture+' Architecture';
   if(shardBonus) logMsg+=' +1 Air shard';
   addActivityLog('kiln-log', logMsg, 'success');
   if(!kilnProcess.running){
@@ -494,7 +537,7 @@ function doKilnActionAttempt(actionId){
 function performKilnAction(actionId, instanceId){
   instanceId=instanceId||activeKilnInstanceId;
   if(instanceId) setActiveKiln(instanceId);
-  if(kilnProcess.running) stopKilnBlowing(true);
+  if(kilnProcess.running) stopKilnRecipeContinuous(true);
   stopOtherActivities(null);
   const result=doKilnActionAttempt(actionId);
   if(!result.ok){
@@ -508,19 +551,37 @@ function performKilnAction(actionId, instanceId){
   return true;
 }
 
-let kilnBlowActivity=null;
+let kilnRecipeActivity=null;
 
-function getKilnBlowActivity(){
-  if(kilnBlowActivity) return kilnBlowActivity;
-  kilnBlowActivity=createTimedActivity({
+function kilnTabHasContinuousRecipes(tab){
+  return tab==='clay'||tab==='melting'||tab==='blow'||tab==='metal';
+}
+
+function kilnContinuousStatusLabel(tab){
+  if(tab==='melting') return 'Melting…';
+  if(tab==='blow') return 'Blowing…';
+  if(tab==='metal') return 'Smelting…';
+  return 'Firing…';
+}
+
+function kilnContinuousStopLabel(tab){
+  if(tab==='melting') return '⛔ STOP MELTING';
+  if(tab==='blow') return '⛔ STOP BLOWING';
+  if(tab==='metal') return '⛔ STOP SMELTING';
+  return '⛔ STOP FIRING';
+}
+
+function getKilnRecipeActivity(){
+  if(kilnRecipeActivity) return kilnRecipeActivity;
+  kilnRecipeActivity=createTimedActivity({
     type:'kiln',
     state:kilnProcess,
-    label:'Blowing',
+    label:'Kiln',
     canContinue:()=>{
-      if(kilnTab!=='blow') return false;
+      if(!kilnTabHasContinuousRecipes(kilnTab)) return false;
       return kilnActionCanRun(getActiveKilnRecipeKey()).ok;
     },
-    cannotStartMsg:'Nothing to blow right now.',
+    cannotStartMsg:'Nothing to craft right now.',
     outOfResourcesMsg:'Out of materials.',
     onAttempt:()=>{
       const result=doKilnActionAttempt(getActiveKilnRecipeKey());
@@ -537,20 +598,70 @@ function getKilnBlowActivity(){
       }
     },
   });
-  return kilnBlowActivity;
+  return kilnRecipeActivity;
+}
+
+function kilnRecipeContinuous(){
+  getKilnRecipeActivity().startContinuous();
+}
+
+function stopKilnRecipeContinuous(fromActivitySwitch){
+  getKilnRecipeActivity().stop(fromActivitySwitch);
 }
 
 function blowKilnContinuous(){
-  getKilnBlowActivity().startContinuous();
+  kilnRecipeContinuous();
 }
 
 function stopKilnBlowing(fromActivitySwitch){
-  getKilnBlowActivity().stop(fromActivitySwitch);
+  stopKilnRecipeContinuous(fromActivitySwitch);
 }
 
 function kilnQuickTapLabel(){
   const action=state.kilnLastAction?getKilnActionDef(state.kilnLastAction):null;
   return action?.quickLabel||'open menu';
+}
+
+function kilnQuickTapShortLabel(quickAction){
+  if(quickAction==='menu') return 'open menu';
+  const label=kilnQuickTapLabel();
+  if(label==='open menu') return 'run recipe';
+  return label+' (last made)';
+}
+
+function kilnQuickTapToggleLabel(quickAction){
+  if(quickAction==='menu') return '📋 Open menu';
+  const short=kilnQuickTapShortLabel('recipe');
+  return '🏺 '+short;
+}
+
+function renderKilnQuickTapToggle(){
+  const el=document.getElementById('kiln-default-toggle');
+  if(!el) return;
+  if(state.kilnQuickAction==null) state.kilnQuickAction='recipe';
+  el.innerHTML='<button type="button" class="store-shelf-action" style="width:100%" onclick="toggleKilnDefault()">Quick tap: '
+    +kilnQuickTapToggleLabel(state.kilnQuickAction)+' (tap to change)</button>';
+}
+
+function toggleKilnDefault(){
+  state.kilnQuickAction=state.kilnQuickAction==='recipe'?'menu':'recipe';
+  updateKilnCellQuickAction();
+  renderKilnQuickTapToggle();
+  scheduleSaveGame();
+  showToast('Quick tap: '+kilnQuickTapShortLabel(state.kilnQuickAction)+'.');
+}
+
+function kilnMaterialBtnHtml(m, cfg, required, placeFn){
+  const req=required!=null?required:(m.required||0);
+  const count=cfg[m.countKey]|0;
+  const done=count>=req;
+  const canAdd=!done&&itemCountBagAndStore(m.key)>0;
+  const def=LOG_DEFS?.[m.key];
+  const name=(m.name||def?.name||m.key).toUpperCase();
+  const icon=m.icon||def?.icon||'';
+  return '<button class="wb-btn once" style="flex:1" '+(done||!canAdd?'disabled':'')+' onclick="'+placeFn+'(event,null,\''+m.key+'\')">'
+    +icon+' ADD '+name
+    +'<span class="wb-btn-sub">'+count+'/'+req+'</span></button>';
 }
 
 function kilnQuickTap(event){
@@ -560,7 +671,8 @@ function kilnQuickTap(event){
   const cfg=getKilnConfig(instanceId);
   const stage=getKilnStage(cfg);
   if(stage==='building'){
-    const next=KILN_BUILD_MATERIALS.find(m=>(cfg[m.countKey]|0)<m.required);
+    const next=KILN_BUILD_MATERIALS.find(m=>(cfg[m.countKey]|0)<m.required&&itemCountBagAndStore(m.key)>0)
+      ||KILN_BUILD_MATERIALS.find(m=>(cfg[m.countKey]|0)<m.required);
     if(next) placeKilnBuildMaterial(event, instanceId, next.key);
     return;
   }
@@ -570,14 +682,19 @@ function kilnQuickTap(event){
   }
   if(stage==='unlit'){
     if(!isKilnFueled(cfg)){
-      const next=KILN_FUEL_LOGS.find(l=>(cfg[l.countKey]|0)<KILN_FUEL_LOG_REQUIRED);
+      const next=KILN_FUEL_LOGS.find(l=>(cfg[l.countKey]|0)<KILN_FUEL_LOG_REQUIRED&&itemCountBagAndStore(l.key)>0)
+        ||KILN_FUEL_LOGS.find(l=>(cfg[l.countKey]|0)<KILN_FUEL_LOG_REQUIRED);
       if(next) placeKilnFuelLog(event, instanceId, next.key);
       return;
     }
     openKilnScreen();
     return;
   }
-  if(!state.kilnLastAction){
+  if(kilnProcess.running&&state.kilnQuickAction==='recipe'){
+    openKilnScreen();
+    return;
+  }
+  if(state.kilnQuickAction==='menu'||!state.kilnLastAction){
     openKilnScreen();
     return;
   }
@@ -597,7 +714,8 @@ function openKilnScreen(){
     showToast('Mark out a kiln site on your plot first.');
     return;
   }
-  if(state.kilnLastAction) migrateKilnRecipeKeys();
+  migrateKilnRecipeKeys();
+  restoreKilnScreenState();
   showScreen('kiln-screen');
   lastHome='exterior-screen';
   renderKilnScreen();
@@ -605,21 +723,17 @@ function openKilnScreen(){
 }
 
 function closeKilnScreen(){
-  if(kilnProcess.running) stopKilnBlowing(true);
+  if(kilnProcess.running) stopKilnRecipeContinuous(true);
   showScreen('exterior-screen');
   lastHome='exterior-screen';
   syncUI();
-}
-
-function getKilnActivitySkillKey(){
-  return 'fire';
 }
 
 function renderKilnMaterialGrid(materialKey, count){
   const mat=getKilnBuildMaterialDef(materialKey);
   if(!mat) return '';
   return '<div class="kiln-material-block">'
-    +'<div class="kiln-material-title">'+mat.icon+' '+mat.name+' · '+count+' / '+mat.required+'</div>'
+    +'<div class="kiln-material-title">'+formatRecipeMatTitle(mat.icon, mat.name, mat.required, count)+'</div>'
     +'<div class="well-brick-grid fire-pit-material-grid">'
     +Array.from({ length:mat.required }, (_,i)=>{
       const filled=i<count;
@@ -631,7 +745,7 @@ function renderKilnMaterialGrid(materialKey, count){
 function renderKilnMouldGrid(cfg){
   const iron=cfg?.mouldIron|0;
   return '<div class="kiln-material-block">'
-    +'<div class="kiln-material-title">🔩 Iron ore · '+iron+' / '+KILN_MOULD_IRON_REQUIRED+'</div>'
+    +'<div class="kiln-material-title">'+formatRecipeMatTitle('🔩', 'Iron ore', KILN_MOULD_IRON_REQUIRED, iron)+'</div>'
     +'<div class="well-brick-grid fire-pit-material-grid">'
     +Array.from({ length:KILN_MOULD_IRON_REQUIRED }, (_,i)=>{
       const filled=i<iron;
@@ -640,20 +754,74 @@ function renderKilnMouldGrid(cfg){
     +'</div></div>';
 }
 
+function getKilnActivitySkillKey(){
+  if(kilnTab==='metal') return 'metalworking';
+  return 'crafting';
+}
+
 function migrateKilnRecipeKeys(){
   if(!kilnRecipeByTab.clay) kilnRecipeByTab.clay='fire_brick';
   if(!kilnRecipeByTab.melting) kilnRecipeByTab.melting='molten_glass';
   if(!kilnRecipeByTab.blow) kilnRecipeByTab.blow='blow_vial';
-  if(state._kilnRecipeTabMigrated) return;
-  state._kilnRecipeTabMigrated=true;
+  if(!kilnRecipeByTab.metal) kilnRecipeByTab.metal='smelt_copper_nails';
+  getKilnMetalTierKeys().forEach(tierId=>{
+    const saved=state.kilnMetalRecipeByTier?.[tierId];
+    const fallback=KILN_METAL_TIERS[tierId]?.actions?.[0];
+    if(saved&&KILN_ACTIONS[saved]) kilnRecipeByMetalTier[tierId]=saved;
+    else if(fallback) kilnRecipeByMetalTier[tierId]=fallback;
+  });
+  if(!KILN_METAL_TIERS[kilnMetalTier]){
+    kilnMetalTier=(state.kilnLastMetalTier&&KILN_METAL_TIERS[state.kilnLastMetalTier])
+      ?state.kilnLastMetalTier
+      :(getKilnMetalTierKeys()[0]||'copper');
+  }
+  if(!state._kilnRecipeTabMigrated){
+    state._kilnRecipeTabMigrated=true;
+    if(state.kilnLastAction&&KILN_ACTIONS[state.kilnLastAction]){
+      const tab=getKilnTabForAction(state.kilnLastAction);
+      kilnTab=tab;
+      kilnRecipeByTab[tab]=state.kilnLastAction;
+      if(tab==='metal'){
+        const tier=getKilnMetalTierForAction(state.kilnLastAction);
+        kilnMetalTier=tier;
+        state.kilnLastMetalTier=tier;
+        kilnRecipeByMetalTier[tier]=state.kilnLastAction;
+        if(!state.kilnMetalRecipeByTier) state.kilnMetalRecipeByTier={};
+        state.kilnMetalRecipeByTier[tier]=state.kilnLastAction;
+      }
+    }
+  }
+  if(kilnTab==='metal') syncKilnMetalTierFromRecipe();
+}
+
+function restoreKilnScreenState(){
+  if(state.kilnLastMetalTier&&KILN_METAL_TIERS[state.kilnLastMetalTier]){
+    kilnMetalTier=state.kilnLastMetalTier;
+  }
   if(state.kilnLastAction&&KILN_ACTIONS[state.kilnLastAction]){
     kilnTab=getKilnTabForAction(state.kilnLastAction);
-    kilnRecipeByTab[kilnTab]=state.kilnLastAction;
+    if(kilnTab!=='metal') kilnRecipeByTab[kilnTab]=state.kilnLastAction;
   }
+  if(kilnTab==='metal') syncKilnMetalTierFromRecipe();
+}
+
+function getActiveKilnMetalTier(){
+  if(KILN_METAL_TIERS[kilnMetalTier]) return kilnMetalTier;
+  return getKilnMetalTierKeys()[0]||'copper';
+}
+
+function syncKilnMetalTierFromRecipe(){
+  if(kilnTab!=='metal') return;
+  const tier=getActiveKilnMetalTier();
+  const key=kilnRecipeByTab.metal;
+  if(key&&getKilnMetalTierForAction(key)===tier) return;
+  const fallback=kilnRecipeByMetalTier[tier]||getKilnRecipesForMetalTier(tier)[0]?.id;
+  if(fallback) kilnRecipeByTab.metal=fallback;
 }
 
 function getActiveKilnRecipeKey(){
   migrateKilnRecipeKeys();
+  if(kilnTab==='metal') syncKilnMetalTierFromRecipe();
   const key=kilnRecipeByTab[kilnTab];
   if(key&&KILN_ACTIONS[key]) return key;
   const fallback=KILN_TABS[kilnTab]?.actions?.[0];
@@ -704,7 +872,7 @@ function kilnRecipeRewardLine(action){
 
 function kilnRecipeXpPreview(action){
   if(!action) return '';
-  const verb=action.menu==='melting'?'Melt':action.menu==='blow'?'Blow':'Fire';
+  const verb=action.menu==='melting'?'Melt':action.menu==='blow'?'Blow':action.menu==='metal'?'Smelt':'Fire';
   const xp=getKilnRecipeXpLine(action);
   return verb+': '+(xp||'No XP listed');
 }
@@ -718,10 +886,37 @@ function kilnRecipeUiBlockMessage(check){
 function selectKilnRecipe(actionId){
   const action=getKilnActionDef(actionId);
   if(!action) return;
-  const prevKey=kilnRecipeByTab[action.menu];
-  if(actionId!==prevKey&&kilnProcess.running) stopKilnBlowing(true);
-  kilnRecipeByTab[action.menu]=actionId;
+  const tab=getKilnTabForAction(actionId);
+  const prevKey=kilnRecipeByTab[tab];
+  if(actionId!==prevKey&&kilnProcess.running) stopKilnRecipeContinuous(true);
+  kilnRecipeByTab[tab]=actionId;
+  if(tab==='metal'){
+    const tier=getKilnMetalTierForAction(actionId);
+    kilnMetalTier=tier;
+    state.kilnLastMetalTier=tier;
+    kilnRecipeByMetalTier[tier]=actionId;
+    state.kilnMetalRecipeByTier[tier]=actionId;
+    scheduleSaveGame();
+  }
   kilnRecipePickerOpen=false;
+  renderKilnActivitySection();
+  renderKilnActivityButtons();
+  renderKilnQuickTapToggle();
+}
+
+function selectKilnMetalTier(tierId){
+  if(!KILN_METAL_TIERS[tierId]) return;
+  if(kilnMetalTier===tierId&&kilnTab==='metal') return;
+  if(kilnProcess.running) stopKilnRecipeContinuous(true);
+  kilnMetalTier=tierId;
+  state.kilnLastMetalTier=tierId;
+  const recipe=kilnRecipeByMetalTier[tierId]||getKilnRecipesForMetalTier(tierId)[0]?.id;
+  if(recipe){
+    kilnRecipeByTab.metal=recipe;
+    state.kilnMetalRecipeByTier[tierId]=recipe;
+  }
+  scheduleSaveGame();
+  kilnRecipePickerOpen=true;
   renderKilnActivitySection();
   renderKilnActivityButtons();
 }
@@ -731,6 +926,76 @@ function toggleKilnRecipePicker(){
   kilnRecipePickerOpen=!kilnRecipePickerOpen;
   renderKilnTabPanel(kilnTab);
   renderKilnActivityButtons();
+}
+
+function renderKilnMetalTierRowHtml(){
+  const tier=getActiveKilnMetalTier();
+  return '<div class="fire-pit-tab-row kiln-metal-tier-row">'
+    +getKilnMetalTierKeys().map(tierId=>{
+      const def=KILN_METAL_TIERS[tierId];
+      const active=tier===tierId?' active':'';
+      return '<button type="button" class="expedition-tier-btn'+active+'" onclick="selectKilnMetalTier(\''+tierId+'\')">'+def.label+'</button>';
+    }).join('')
+    +'</div>';
+}
+
+function renderKilnMetalRecipePickerList(tierId){
+  const cfg=getKilnConfig(activeKilnInstanceId);
+  return getKilnRecipesForMetalTier(tierId).map(action=>{
+    const display=getKilnRecipeDisplay(action);
+    const selected=getActiveKilnRecipeKey()===action.id&&kilnTab==='metal';
+    const avail=kilnActionAvailable(cfg, action.id);
+    const skillCls=action.skills?' kiln-recipe-option':'';
+    return '<div class="wb-mat-option'+skillCls+(selected?' selected':'')+(avail?'':' unavail')+'" onclick="'+(selected?'toggleKilnRecipePicker()':'selectKilnRecipe(\''+action.id+'\')')+'">'
+      +'<span class="wb-mat-icon">'+display.icon+'</span>'
+      +'<span class="wb-mat-info">'
+      +kilnRecipeTitleHtml(action)
+      +kilnRecipeInputLinesHtml(action, 'wb-mat-stock')
+      +'<span class="wb-mat-stock" style="color:var(--ui-text-dim)">'+kilnRecipeRewardLine(action)+'</span>'
+      +'</span>'
+      +kilnSkillLevelBadges(action)
+      +'</div>';
+  }).join('');
+}
+
+function renderKilnMetalTabPanel(tab){
+  const recipeKey=getActiveKilnRecipeKey();
+  const action=getKilnActionDef(recipeKey);
+  const el=document.getElementById('kiln-recipe-list-'+tab);
+  if(!el||!action) return;
+  const tier=getActiveKilnMetalTier();
+  const check=kilnActionCanRun(action.id);
+  const can=!!check.ok;
+  const uiBlock=kilnRecipeUiBlockMessage(check);
+  const display=getKilnRecipeDisplay(action);
+  const inputLines=kilnRecipeInputLinesHtml(action, 'wb-mat-pick-avail');
+  const pickerOpen=kilnRecipePickerOpen&&tab===kilnTab;
+  const skillBadges=kilnSkillLevelBadges(action);
+  const pickSkillCls=action.skills?' kiln-recipe-pick':'';
+  const bodySkillCls=action.skills?' kiln-recipe-pick-body':'';
+  let recipesHtml='';
+  if(!pickerOpen){
+    recipesHtml='<div class="wb-log-pick wb-log-pick-collapsed selected'+pickSkillCls+(can?'':' unavail')+'" onclick="toggleKilnRecipePicker()">'
+      +'<span class="wb-mat-icon">'+display.icon+'</span>'
+      +'<div class="wb-mat-pick-body'+bodySkillCls+'">'
+      +kilnRecipeTitleHtml(action)
+      +inputLines
+      +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+kilnRecipeRewardLine(action)+'</span>'
+      +(uiBlock?'<span class="wb-mat-pick-name" style="font-size:11px;color:rgba(255,110,110,0.92)">'+uiBlock+'</span>':'')
+      +'</div>'
+      +skillBadges
+      +'<span class="wb-log-pick-chevron">▾</span>'
+      +'</div>';
+  }else{
+    recipesHtml='<div class="kiln-metal-recipes">'+renderKilnMetalRecipePickerList(tier)+'</div>';
+  }
+  el.innerHTML=renderKilnMetalTierRowHtml()+recipesHtml;
+  const xpEl=document.getElementById('kiln-xp-preview-'+tab);
+  if(xpEl){
+    let html='<span class="wb-xp-line">'+kilnRecipeXpPreview(action)+'</span>';
+    if(uiBlock) html+='<span class="wb-xp-line">'+uiBlock+'</span>';
+    xpEl.innerHTML=html;
+  }
 }
 
 function renderKilnRecipePickerList(tab){
@@ -753,6 +1018,10 @@ function renderKilnRecipePickerList(tab){
 }
 
 function renderKilnTabPanel(tab){
+  if(tab==='metal'){
+    renderKilnMetalTabPanel(tab);
+    return;
+  }
   const recipeKey=tab===kilnTab?getActiveKilnRecipeKey():kilnRecipeByTab[tab];
   const action=getKilnActionDef(recipeKey);
   const el=document.getElementById('kiln-recipe-list-'+tab);
@@ -781,7 +1050,7 @@ function renderKilnTabPanel(tab){
       +skillBadges
       +'</div>';
   }else if(!pickerOpen){
-    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+pickSkillCls+(can?'':' unavail')+'" onclick="toggleKilnRecipePicker()">'
+    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed selected'+pickSkillCls+(can?'':' unavail')+'" onclick="toggleKilnRecipePicker()">'
       +'<span class="wb-mat-icon">'+display.icon+'</span>'
       +'<div class="wb-mat-pick-body'+bodySkillCls+'">'
       +kilnRecipeTitleHtml(action)
@@ -807,6 +1076,7 @@ function renderKilnTabPanel(tab){
 function kilnActionVerb(tab){
   if(tab==='melting') return 'MELT';
   if(tab==='blow') return 'BLOW';
+  if(tab==='metal') return 'SMELT';
   return 'FIRE';
 }
 
@@ -821,50 +1091,52 @@ function renderKilnActivityButtons(){
   const blockMsg=kilnRecipeBlockMessage(check);
   const uiBlock=kilnRecipeUiBlockMessage(check);
   if(statusEl){
-    if(kilnProcess.running&&kilnTab==='blow') statusEl.textContent='Blowing…';
-    else statusEl.textContent=uiBlock||blockMsg||'Run the selected kiln recipe below';
+    if(kilnProcess.running&&kilnTabHasContinuousRecipes(kilnTab)) statusEl.textContent=kilnContinuousStatusLabel(kilnTab);
+    else statusEl.textContent=uiBlock||blockMsg||'Ready';
     statusEl.classList.toggle('idle',!kilnProcess.running);
   }
   btnEl.hidden=false;
-  if(kilnTab==='blow'){
-    if(kilnProcess.running){
-      renderOnceContinuousButtons({
-        btnEl,
-        running:true,
-        stopOnclick:'stopKilnBlowing()',
-        stopLabel:'⛔ STOP BLOWING',
-      });
-      return;
-    }
+  if(!kilnTabHasContinuousRecipes(kilnTab)){
+    btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
+      +'<button class="wb-btn once" style="flex:1" '+(can?'':'disabled')+' onclick="performKilnAction(\''+recipeKey+'\')">'
+      +'1 '+kilnActionVerb(kilnTab)
+      +'</button></div></div>'
+      +(blockMsg&&blockMsg.includes('full')?'<div class="wb-cost-notice">Bag full — make space first.</div>':'');
+    return;
+  }
+  if(kilnProcess.running){
     renderOnceContinuousButtons({
       btnEl,
-      running:false,
-      can,
-      onceLabel:'1 BLOW',
-      onceOnclick:'performKilnAction(\''+recipeKey+'\')',
-      continuousOnclick:'blowKilnContinuous()',
-      noticeHtml:blockMsg&&blockMsg.includes('full')?'<div class="wb-cost-notice">Bag full — make space first.</div>':'',
+      running:true,
+      stopOnclick:'stopKilnRecipeContinuous()',
+      stopLabel:kilnContinuousStopLabel(kilnTab),
     });
     return;
   }
-  btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
-    +'<button class="wb-btn once" style="flex:1" '+(can?'':'disabled')+' onclick="performKilnAction(\''+recipeKey+'\')">'
-    +'1 '+kilnActionVerb(kilnTab)
-    +'</button></div></div>'
-    +(blockMsg&&blockMsg.includes('full')?'<div class="wb-cost-notice">Bag full — make space first.</div>':'');
+  renderOnceContinuousButtons({
+    btnEl,
+    running:false,
+    can,
+    onceLabel:'1 '+kilnActionVerb(kilnTab),
+    onceOnclick:'performKilnAction(\''+recipeKey+'\')',
+    continuousOnclick:'kilnRecipeContinuous()',
+    noticeHtml:blockMsg&&blockMsg.includes('full')?'<div class="wb-cost-notice">Bag full — make space first.</div>':'',
+  });
 }
 
 function setKilnTab(tab){
   if(!KILN_TABS[tab]) tab='clay';
-  if(tab!=='blow'&&kilnProcess.running) stopKilnBlowing(true);
+  if(kilnProcess.running) stopKilnRecipeContinuous(true);
   kilnTab=tab;
   kilnRecipePickerOpen=false;
+  if(tab==='metal') syncKilnMetalTierFromRecipe();
   renderKilnActivitySection();
   renderKilnActivityButtons();
 }
 
 function renderKilnActivitySection(){
   migrateKilnRecipeKeys();
+  renderKilnQuickTapToggle();
   updateActivitySkillPill('kiln', getKilnActivitySkillKey());
   const activitySection=document.getElementById('kiln-activity-section');
   const logEl=document.getElementById('kiln-log');
@@ -887,7 +1159,7 @@ function renderKilnFuelGrid(logKey, count){
   const icon=def?.icon||logDef.icon;
   const name=def?.name||logDef.name;
   return '<div class="kiln-material-block">'
-    +'<div class="kiln-material-title">'+icon+' '+name+' · '+count+' / '+KILN_FUEL_LOG_REQUIRED+'</div>'
+    +'<div class="kiln-material-title">'+formatRecipeMatTitle(icon, name, KILN_FUEL_LOG_REQUIRED, count)+'</div>'
     +'<div class="well-brick-grid fire-pit-material-grid">'
     +Array.from({ length:KILN_FUEL_LOG_REQUIRED }, (_,i)=>{
       const filled=i<count;
@@ -914,8 +1186,8 @@ function kilnPlotQuickLabel(stage, cfg){
     if(!isKilnFueled(cfg)) return 'add log';
     return 'open menu';
   }
-  if(!state.kilnLastAction) return 'open menu';
-  return kilnQuickTapLabel();
+  if(kilnProcess.running&&state.kilnQuickAction==='recipe') return 'stop';
+  return kilnQuickTapShortLabel(state.kilnQuickAction||'recipe');
 }
 
 function renderKilnScreen(){
@@ -993,40 +1265,38 @@ function renderKilnScreen(){
           ?'Simple kiln (unlit) — light with Fire Lv '+KILN_LIGHT_FIRE_LEVEL
           :'Simple kiln (unlit) — add simple-tier logs to the firebox';
       }else if(stage==='moulding'){
-        statusEl.textContent='Tap the kiln site or use the button below to add iron ore';
+        statusEl.textContent='Use the button below to add iron ore';
       }else{
-        statusEl.textContent='Tap the kiln site or use the button below to add materials';
+        statusEl.textContent='Use the button below to add materials';
       }
     }
   }
   if(btnEl&&stage!=='complete'){
     if(stage==='building'){
-      const next=KILN_BUILD_MATERIALS.find(m=>(cfg[m.countKey]|0)<m.required);
-      btnEl.hidden=!next;
-      btnEl.innerHTML=next
+      const showBuild=KILN_BUILD_MATERIALS.some(m=>(cfg[m.countKey]|0)<m.required);
+      btnEl.hidden=!showBuild;
+      btnEl.innerHTML=showBuild
         ?'<div class="wb-use-box"><div class="wb-use-btns kiln-use-btns">'
-          +'<button class="wb-btn once" style="flex:1" onclick="placeKilnBuildMaterial(event,null,\''+next.key+'\')">'
-          +next.icon+' ADD '+next.name.toUpperCase()
-          +'<span class="wb-btn-sub">'+(cfg[next.countKey]|0)+'/'+next.required+'</span></button></div></div>'
+          +KILN_BUILD_MATERIALS.map(m=>kilnMaterialBtnHtml(m, cfg, m.required, 'placeKilnBuildMaterial')).join('')
+          +'</div></div>'
         :'';
     }else if(stage==='moulding'){
       const ironLeft=(cfg.mouldIron|0)<KILN_MOULD_IRON_REQUIRED;
+      const canAdd=ironLeft&&itemCountBagAndStore('iron_ore')>0;
       btnEl.hidden=!ironLeft;
       btnEl.innerHTML=ironLeft
         ?'<div class="wb-use-box"><div class="wb-use-btns kiln-use-btns">'
-          +'<button class="wb-btn once" style="flex:1" onclick="placeKilnMouldIron(event)">🔩 ADD IRON ORE'
+          +'<button class="wb-btn once" style="flex:1" '+(!canAdd?'disabled':'')+' onclick="placeKilnMouldIron(event)">🔩 ADD IRON ORE'
           +'<span class="wb-btn-sub">'+(cfg.mouldIron|0)+'/'+KILN_MOULD_IRON_REQUIRED+'</span></button></div></div>'
         :'';
     }else if(stage==='unlit'&&!isKilnFueled(cfg)){
-      const next=KILN_FUEL_LOGS.find(l=>(cfg[l.countKey]|0)<KILN_FUEL_LOG_REQUIRED);
-      const def=next?LOG_DEFS?.[next.key]:null;
-      btnEl.hidden=!next;
-      btnEl.innerHTML=next
+      const html=KILN_FUEL_LOGS.some(l=>(cfg[l.countKey]|0)<KILN_FUEL_LOG_REQUIRED)
         ?'<div class="wb-use-box"><div class="wb-use-btns kiln-use-btns">'
-          +'<button class="wb-btn once" style="flex:1" onclick="placeKilnFuelLog(event,null,\''+next.key+'\')">'
-          +(def?.icon||next.icon)+' ADD '+(def?.name||next.name).toUpperCase()
-          +'<span class="wb-btn-sub">'+(cfg[next.countKey]|0)+'/'+KILN_FUEL_LOG_REQUIRED+'</span></button></div></div>'
+          +KILN_FUEL_LOGS.map(l=>kilnMaterialBtnHtml(l, cfg, KILN_FUEL_LOG_REQUIRED, 'placeKilnFuelLog')).join('')
+          +'</div></div>'
         :'';
+      btnEl.hidden=!html;
+      btnEl.innerHTML=html;
     }else{
       btnEl.hidden=true;
       btnEl.innerHTML='';

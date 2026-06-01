@@ -7,7 +7,8 @@ const SKILL_META={
   fishing:  {icon:'🎣',name:'Fishing',    color:'#50a0e0', blurb:'Catch fish from ponds, rivers, and oceans.'},
   mining:   {icon:'⛏️',name:'Mining',     color:'#808080', blurb:'Strike the quarry and haul stone from the earth.'},
   carpentry:{icon:'🪚',name:'Carpentry (items)', color:'#a06030', blurb:'Craft furniture, tools, and household items.'},
-  tailoring:{icon:'🧵',name:'Tailoring (textiles)',color:'#c07090', blurb:'Work textiles into cloth, clothing, and soft goods.'},
+  metalworking:{icon:'⚒️',name:'Metalworking',color:'#7890a8', blurb:'Smelt ore and shape nails, tools, and armour at the kiln.'},
+  crafting:{icon:'🛠️',name:'Crafting',color:'#c07090', blurb:'Fabrics, pottery, and glasswork.'},
   architecture:{icon:'🏗️',name:'Architecture (structures)',color:'#a89070', blurb:'Plan and build structures — unlock a Builder\'s House at higher levels.'},
   cooking:  {icon:'🍳',name:'Cooking',    color:'#e88030', blurb:'Prepare meals at the hearth and campfire.'},
   botany:   {icon:'🌱',name:'Botany',     color:'#58a868', blurb:'Grow, prepare, and craft with plants and fibers.'},
@@ -24,7 +25,7 @@ const SKILL_META={
 
 const SKILL_CATEGORIES=[
   { id:'collecting', label:'Collecting', skills:['woodcut','foraging','fishing','mining'] },
-  { id:'crafting', label:'Crafting', skills:['carpentry','tailoring','architecture','cooking','botany'] },
+  { id:'crafting', label:'Crafting', skills:['carpentry','metalworking','crafting','architecture','cooking','botany'] },
   { id:'character', label:'Character', skills:['husbandry','design','exploration','knowledge','magic'] },
   { id:'affinities', label:'Affinities', skills:['air','earth','fire','water'] },
 ];

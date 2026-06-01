@@ -1,29 +1,23 @@
 /**
  * Full consistency & dependency audit for Hearthstead codebase.
- * Run: node scripts/audit.js
+ * Script order: build/manifest.json (see npm run manifest:check).
+ * Run: npm run audit  |  npm run ci
  */
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const {
+  ROOT,
+  loadManifest,
+  getLoadOrder,
+  getExpectedScriptSrcs,
+  getHtmlPath,
+} = require('./lib/load-manifest');
 
-const ROOT = path.join(__dirname, '..');
-const html = fs.readFileSync(path.join(ROOT, 'Game - Draft 1.html'), 'utf8');
-
-const DATA_ORDER = [
-  'plot-layout.js', 'resources.js', 'nodes.js', 'structures.js', 'well.js', 'fire-pit.js', 'kiln.js',
-  'interior.js', 'skills.js', 'equipment.js', 'fish.js', 'exploration.js', 'crafting.js',
-  'water.js', 'furniture.js', 'botany.js', 'farming.js', 'loom.js', 'pets.js',
-];
-const JS_ORDER = [
-  'constants.js', 'data-init.js', 'state.js', 'activity-engine.js', 'navigation.js', 'panels.js',
-  'sync-ui.js', 'plot.js', 'interior-grid.js', 'activities.js', 'well.js', 'fire-pit.js', 'kiln.js',
-  'farming-plot.js', 'interactions.js', 'botany-table.js', 'loom.js', 'workbench.js', 'ui.js', 'save.js', 'bootstrap.js',
-];
-
-const LOAD_ORDER = [
-  ...DATA_ORDER.map((f) => ({ file: `data/${f}`, group: 'data' })),
-  ...JS_ORDER.map((f) => ({ file: `js/${f}`, group: 'js' })),
-];
+const manifest = loadManifest();
+const htmlPath = getHtmlPath(manifest);
+const html = fs.readFileSync(htmlPath, 'utf8');
+const LOAD_ORDER = getLoadOrder(manifest);
 
 const report = {
   errors: [],
@@ -41,21 +35,40 @@ function info(msg) {
   report.info.push(msg);
 }
 
-// ── 1. HTML script tags vs filesystem ──
+// ── 1. HTML script tags vs build/manifest.json ──
 const scriptSrcs = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
-const expectedSrcs = LOAD_ORDER.map((x) => x.file);
+const expectedSrcs = getExpectedScriptSrcs(manifest);
 if (scriptSrcs.length !== expectedSrcs.length) {
-  warn(`HTML has ${scriptSrcs.length} script tags; expected ${expectedSrcs.length}`);
+  err(`HTML has ${scriptSrcs.length} script tags; manifest lists ${expectedSrcs.length} — run npm run manifest:sync`);
 }
 scriptSrcs.forEach((src, i) => {
-  if (src !== expectedSrcs[i]) warn(`Script order mismatch at index ${i}: HTML="${src}" expected="${expectedSrcs[i]}"`);
+  if (src !== expectedSrcs[i]) {
+    err(`Script order mismatch at index ${i}: HTML="${src}" manifest="${expectedSrcs[i]}" — edit build/manifest.json then npm run manifest:sync`);
+  }
   if (!fs.existsSync(path.join(ROOT, src))) err(`Missing script file: ${src}`);
 });
+const manifestOnly = expectedSrcs.filter((s) => !scriptSrcs.includes(s));
+const htmlOnly = scriptSrcs.filter((s) => !expectedSrcs.includes(s));
+if (manifestOnly.length) err(`In manifest but not in HTML: ${manifestOnly.join(', ')}`);
+if (htmlOnly.length) err(`In HTML but not in manifest: ${htmlOnly.join(', ')}`);
 const dupScripts = scriptSrcs.filter((s, i) => scriptSrcs.indexOf(s) !== i);
 if (dupScripts.length) err(`Duplicate script tags: ${[...new Set(dupScripts)].join(', ')}`);
 
 if (html.match(/<script(?![^>]*\ssrc=)/)) {
   err('Inline <script> block found in HTML (should be external only)');
+}
+
+const manifestStyles = manifest.styles || [];
+if (manifestStyles.length) {
+  for (const href of manifestStyles) {
+    if (!fs.existsSync(path.join(ROOT, href))) err(`Missing stylesheet from manifest: ${href}`);
+    if (!html.includes(`href="${href}"`)) {
+      err(`HTML missing stylesheet link for ${href} — run npm run styles:sync`);
+    }
+  }
+  if (/<style>[\s\S]*?<\/style>/.test(html)) {
+    err('Inline <style> block found — extract to css/game.css and run npm run styles:sync');
+  }
 }
 
 // ── 2. Parse globals per file ──
@@ -219,7 +232,8 @@ for (const [file, ids] of Object.entries(unresolvedByFile)) {
 const DATA_DEPS = {
   'data/interior.js': ['WOODLANDS', 'PLOT_TILE_BASE', 'MINES'],
   'data/crafting.js': ['FISH_DEFS'],
-  'data/data-init.js': ['PLOT_TILE_BASE', 'WOODLANDS', 'GATHERING_LOCATIONS', 'MINES', 'FURNITURE_CRAFTS', 'FURNITURE_DEFS', 'SHELF_RECIPES', 'LOG_DEFS', 'MINE_RESOURCE_DEFS'],
+  'data/barn.js': ['BARN_ANIMALS'],
+  'js/data-init.js': ['PLOT_TILE_BASE', 'WOODLANDS', 'GATHERING_LOCATIONS', 'MINES', 'FURNITURE_CRAFTS', 'FURNITURE_DEFS', 'SHELF_RECIPES', 'LOG_DEFS', 'MINE_RESOURCE_DEFS'],
 };
 for (const [file, deps] of Object.entries(DATA_DEPS)) {
   const actualFile = file.replace('data/data-init', 'js/data-init');
@@ -237,11 +251,14 @@ for (const [file, deps] of Object.entries(DATA_DEPS)) {
 }
 
 // ── 5. onclick handlers ──
+const ONCLICK_EVENT_METHODS = new Set(['stopPropagation', 'preventDefault']);
 const onclickExprs = [...html.matchAll(/onclick="([^"]+)"/g)].map((m) => m[1]);
 const onclickFns = new Set();
 onclickExprs.forEach((expr) => {
-  expr.replace(/([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g, (_, n) => {
-    if (n !== 'event') onclickFns.add(n);
+  const cleaned = expr.replace(/event\.[a-zA-Z_$][\w$]*\s*\([^)]*\)\s*;?/g, '');
+  cleaned.replace(/([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g, (_, n) => {
+    if (n === 'event' || ONCLICK_EVENT_METHODS.has(n)) return;
+    onclickFns.add(n);
   });
 });
 for (const fn of onclickFns) {
@@ -290,6 +307,9 @@ function mkEl(id) {
     getBoundingClientRect: () => ({ top: 0, left: 0, width: 100, height: 100 }),
     scrollIntoView: () => {},
     click: () => {},
+    remove: () => {},
+    blur: () => {},
+    focus: () => {},
   };
 }
 
@@ -309,15 +329,29 @@ const ctx = {
     addEventListener: () => {},
     createElement: () => mkEl(''),
   },
-  window: {},
+  window: {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  },
   localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
-  setTimeout, clearTimeout, setInterval, clearInterval,
+  setTimeout: (fn) => { if (typeof fn === 'function') fn(); return 0; },
+  clearTimeout: () => {},
+  setInterval: () => 0,
+  clearInterval: () => {},
+  requestAnimationFrame: () => 0,
+  cancelAnimationFrame: () => {},
   Math, Date, Object, Array, JSON, Number, String, parseInt, parseFloat, isNaN, Infinity, undefined, Error, Map, Set,
 };
-ctx.window = ctx;
+Object.assign(ctx.window, ctx);
+ctx.window.addEventListener = ctx.window.addEventListener || (() => {});
+ctx.window.removeEventListener = ctx.window.removeEventListener || (() => {});
 report.runtimeErrors = [];
 
+// bootstrap.js starts timers and full DOM init — browser-only
+const RUNTIME_SKIP = new Set(['js/bootstrap.js']);
+
 for (const { file } of LOAD_ORDER) {
+  if (RUNTIME_SKIP.has(file)) continue;
   try {
     vm.runInNewContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), ctx, { filename: file });
   } catch (e) {
@@ -325,13 +359,76 @@ for (const { file } of LOAD_ORDER) {
   }
 }
 
-if (typeof ctx.state === 'undefined') err('state not initialized after full load');
-if (typeof ctx.getDefaultState !== 'function') err('getDefaultState missing after full load');
-if (typeof ctx.syncUI !== 'function') err('syncUI missing after full load');
-if (typeof ctx.startGame !== 'function') err('startGame missing after full load');
-if (!ctx.RECIPES || !Object.keys(ctx.RECIPES).length) err('RECIPES empty after full load');
-if (!ctx.PLOT_TILE_DEFS || !Object.keys(ctx.PLOT_TILE_DEFS).length) err('PLOT_TILE_DEFS empty after full load');
-if (!ctx.LOG_TYPES || !Object.keys(ctx.LOG_TYPES).length) err('LOG_TYPES empty after full load');
+const bootstrapSrc = fs.readFileSync(path.join(ROOT, 'js/bootstrap.js'), 'utf8');
+if (!/bootStep\s*\(\s*['"]loadGameState['"]/.test(bootstrapSrc)) {
+  err('js/bootstrap.js must call bootStep("loadGameState", loadGameState)');
+}
+
+function runtimeHas(name) {
+  try {
+    return vm.runInNewContext(`typeof ${name} !== 'undefined'`, ctx);
+  } catch {
+    return false;
+  }
+}
+function runtimeKeys(name) {
+  try {
+    return vm.runInNewContext(`Object.keys(${name}).length`, ctx);
+  } catch {
+    return 0;
+  }
+}
+
+if (!runtimeHas('state')) err('state not initialized after full load');
+if (!runtimeHas('getDefaultState')) err('getDefaultState missing after full load');
+if (!runtimeHas('syncUI')) err('syncUI missing after full load');
+if (!runtimeHas('startGame')) err('startGame missing after full load');
+if (!runtimeHas('RECIPES') || runtimeKeys('RECIPES') === 0) err('RECIPES empty after full load');
+if (!runtimeHas('PLOT_TILE_DEFS') || runtimeKeys('PLOT_TILE_DEFS') === 0) err('PLOT_TILE_DEFS empty after full load');
+if (!runtimeHas('LOG_TYPES') || runtimeKeys('LOG_TYPES') === 0) err('LOG_TYPES empty after full load');
+if (!runtimeHas('ITEM_REGISTRY') || runtimeKeys('ITEM_REGISTRY') < 40) err('ITEM_REGISTRY too small after full load');
+if (!runtimeHas('getItemDef')) err('getItemDef missing after full load');
+if (!runtimeHas('stackCount')) err('stackCount missing after full load');
+if (!runtimeHas('markDirty')) err('markDirty missing after full load');
+if (!runtimeHas('flushDirty')) err('flushDirty missing after full load');
+if (!runtimeHas('requestSaveGame')) err('requestSaveGame missing after full load');
+if (!runtimeHas('SAVE_DEBOUNCE_MS')) err('SAVE_DEBOUNCE_MS missing after full load');
+if (!runtimeHas('registerPlotStructure')) err('registerPlotStructure missing after full load');
+if (!runtimeHas('migrateAllPlotStructures')) err('migrateAllPlotStructures missing after full load');
+if (runtimeHas('getRegisteredPlotStructureBehaviors')) {
+  const n = vm.runInNewContext('getRegisteredPlotStructureBehaviors().length', ctx);
+  if (n < 4) err('Expected at least 4 registered plot structures, got ' + n);
+}
+if (!runtimeHas('flushActivityUi')) err('flushActivityUi missing after full load');
+if (!runtimeHas('invalidatePlotGrid')) err('invalidatePlotGrid missing after full load');
+if (!runtimeHas('patchPlotCellElement')) err('patchPlotCellElement missing after full load');
+if (!runtimeHas('registerScreen')) err('registerScreen missing after full load');
+if (!runtimeHas('getRegisteredScreenIds')) err('getRegisteredScreenIds missing after full load');
+if (runtimeHas('getRegisteredScreenIds')) {
+  const n = vm.runInNewContext('getRegisteredScreenIds().length', ctx);
+  if (n < 18) err('Expected at least 18 registered screens, got ' + n);
+}
+if (!runtimeHas('isHutOverlayScreen')) err('isHutOverlayScreen missing after full load');
+if (!runtimeHas('getScreenGoldElementIds')) err('getScreenGoldElementIds missing after full load');
+if (!runtimeHas('registerWorldActivityRunners')) err('registerWorldActivityRunners missing after full load');
+const activityRunnerTypes = ['fishing', 'gathering', 'mining', 'woodcutting', 'exploring', 'crafting'];
+for (const t of activityRunnerTypes) {
+  const ok = vm.runInNewContext(
+    `typeof getActivityRunner==='function'&&!!getActivityRunner('${t}')`,
+    ctx
+  );
+  if (!ok) err('ACTIVITY_RUNNERS missing entry: ' + t);
+}
+if (runtimeHas('hasRunningActivity') && runtimeHas('stopAllActivities')) {
+  vm.runInNewContext('stopAllActivities()', ctx);
+  if (vm.runInNewContext('hasRunningActivity()', ctx)) {
+    err('hasRunningActivity() true after stopAllActivities()');
+  }
+}
+if (runtimeHas('validateItemRegistry')) {
+  const issueN = vm.runInNewContext('collectRegistryIssues().length', ctx);
+  if (issueN > 0) warn(`Item registry has ${issueN} missing recipe/output key(s) — see collectRegistryIssues()`);
+}
 
 // ── 8. Save key consistency ──
 const saveKeyMatches = [...allJs.matchAll(/['"]hearthstead-save['"]/g)];
@@ -351,7 +448,7 @@ console.log('FILE SIZES (lines):');
 sizes.forEach(({ file, lines }) => console.log(`  ${file.padEnd(28)} ${lines}`));
 console.log(`  ${'Game - Draft 1.html'.padEnd(28)} ${html.split(/\r?\n/).length}`);
 
-console.log('\nLOAD ORDER:');
+console.log('\nLOAD ORDER (build/manifest.json):');
 LOAD_ORDER.forEach(({ file }, i) => console.log(`  ${String(i + 1).padStart(2)}. ${file}`));
 
 console.log('\nTOP-LEVEL BINDINGS:');

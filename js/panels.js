@@ -8,9 +8,9 @@ let openPanel=null;
 let invPanelRenderStamp=null;
 
 function getInvPanelRenderStamp(){
-  const invPart=Object.entries(state.inventory)
-    .filter(([,i])=>i.count>0)
-    .map(([k,i])=>k+':'+i.count)
+  const invPart=Object.keys(state.inventory)
+    .filter((k)=>stackCount(state.inventory,k)>0)
+    .map((k)=>k+':'+stackCount(state.inventory,k))
     .sort()
     .join('|');
   const pocketPart=Object.keys(SHARD_META).map(k=>k+':'+(state.pockets[k]||0)).join('|');
@@ -57,32 +57,50 @@ function updateActivityLogEntry(entry, msg, type){
   if(type) entry.className='wb-log-entry latest '+type;
 }
 
+function truncateInvLabel(text, maxLen){
+  const s=String(text||'');
+  if(s.length<=maxLen) return s;
+  return s.slice(0,Math.max(1,maxLen-2))+'..';
+}
+
 function renderInvPanel(){
   document.getElementById('inv-panel')?.remove();
   const w=document.getElementById('game-wrapper');
   const el=document.createElement('div'); el.id='inv-panel'; el.className='panel inv-panel';
   const used=invTotal(), cap=getInvCap(), pct=(used/cap)*100;
   const fc=used>=cap?'full':used>=40?'warn':'';
-  const entries=Object.entries(state.inventory).filter(([,i])=>i.count>0);
-  const shards=Object.keys(SHARD_META).filter(k=>(state.pockets[k]||0)>0);
-  const pocketHtml=shards.length
-    ?'<div class="inv-pockets"><div class="inv-pockets-title">POCKETS</div>'
-      +shards.map(k=>'<div class="inv-pocket-row"><span>'+SHARD_META[k].icon+'</span><span>'+SHARD_META[k].name+'</span><span>x'+(state.pockets[k]||0)+'</span></div>').join('')
-      +'</div>'
-    :'<div class="inv-pockets"><div class="inv-pockets-title">POCKETS</div><div class="inv-empty" style="padding:6px 0">No shards yet.</div></div>';
+  const entries=Object.keys(state.inventory)
+    .map((key)=>({ key, count:stackCount(state.inventory,key), def:getItemDef(key) }))
+    .filter((e)=>e.count>0);
+  const pocketHtml='<div class="inv-pockets"><div class="inv-pockets-title">POCKETS</div>'
+    +'<div class="inv-shard-row">'
+    +Object.keys(SHARD_META).map((k)=>{
+      const m=SHARD_META[k];
+      const n=state.pockets[k]||0;
+      const emptyCls=n>0?'':' empty';
+      return '<div class="inv-shard-chip'+emptyCls+'" tabindex="0">'
+        +'<span class="inv-shard-icon">'+m.icon+'</span>'
+        +'<span class="inv-shard-count">'+n+'</span>'
+        +'<span class="inv-shard-tip">'+m.name+'</span>'
+        +'</div>';
+    }).join('')
+    +'</div></div>';
   const rowsHtml=entries.length
-    ?entries.map(([key,i])=>{
+    ?entries.map(({key, count, def})=>{
+        const canEquipToStore=typeof canEquipToolToStore==='function'&&canEquipToolToStore(key);
         const canEquip=(EQUIPPABLE[key]&&state.equipped?.key!==key)
-          ||(BAG_BY_KEY[key]&&state.equippedBag?.key!==key);
+          ||(BAG_BY_KEY[key]&&state.equippedBag?.key!==key)
+          ||canEquipToStore;
         const sel=invSelectedKey===key;
-        const equipBtn=(sel&&canEquip)
+        const equipBtn=canEquip
           ?'<button class="inv-row-equip" onclick="event.stopPropagation();doEquipFromInv(\''+key+'\')">EQUIP</button>'
           :'';
+        const nameLabel=truncateInvLabel(def.name, 22);
         return '<div class="inv-row'+(sel?' selected':'')+'" onclick="selectInvRow(\''+key+'\')">'
-          +'<span class="inv-row-icon">'+i.icon+'</span>'
-          +'<span class="inv-row-name">'+i.name+'</span>'
+          +'<span class="inv-row-icon">'+def.icon+'</span>'
+          +'<span class="inv-row-name" title="'+def.name.replace(/"/g,'&quot;')+'">'+nameLabel+'</span>'
           +equipBtn
-          +'<span class="inv-row-count">x'+i.count+'</span></div>';
+          +'<span class="inv-row-count">x'+count+'</span></div>';
       }).join('')
     :'<div class="inv-empty">Empty. Go find something.</div>';
   el.innerHTML='<div class="panel-title">INVENTORY — '+used+'/'+cap+'</div>'
@@ -100,26 +118,40 @@ function selectInvRow(key){
 
 function doEquipFromInv(key){
   if(BAG_BY_KEY[key]) return doEquipBagFromInv(key);
+  if(typeof canEquipToolToStore==='function'&&canEquipToolToStore(key)){
+    return doEquipToolToStoreFromInv(key);
+  }
   const def = EQUIPPABLE[key];
   if(!def || state.equipped?.key===key) return;
-  if(!state.inventory[key]?.count){ showToast('Not in bag.'); return; }
-  state.inventory[key].count--;
-  if(!state.inventory[key].count) delete state.inventory[key];
+  if(invCount(key)<=0){ showToast('Not in bag.'); return; }
+  stackTake(state.inventory, key, 1);
   state.equipped = { key, icon:def.icon, name:def.name, tier:def.tier ?? 0 };
   invSelectedKey=null;
   renderInvPanel();
-  syncUI();
+  markDirty('equip','inventory');
+  flushDirty();
   showToast(def.icon+' '+def.name+' equipped!');
+}
+
+function doEquipToolToStoreFromInv(key){
+  if(!equipToolToStore(key)){ showToast('Cannot equip that to your tool store.'); return; }
+  const def=getItemDef(key);
+  invSelectedKey=null;
+  renderInvPanel();
+  markDirty('equip','inventory');
+  flushDirty();
+  showToast(def.icon+' '+def.name+' equipped to tool store — bound forever.');
 }
 
 function doEquipBagFromInv(key){
   const def=BAG_BY_KEY[key];
   if(!def||state.equippedBag?.key===key) return;
-  if(!state.inventory[key]?.count){ showToast('Not in bag.'); return; }
+  if(invCount(key)<=0){ showToast('Not in bag.'); return; }
   if(!equipBagDef(def)) return;
   invSelectedKey=null;
   renderInvPanel();
-  syncUI();
+  markDirty('equip','inventory');
+  flushDirty();
   showToast(def.icon+' '+def.name+' equipped! +'+def.invBonus+' bag space');
 }
 
@@ -127,17 +159,6 @@ function renderEquipPanel(){
   document.getElementById('equip-panel')?.remove();
   const w=document.getElementById('game-wrapper');
   const el=document.createElement('div'); el.id='equip-panel'; el.className='panel equip-panel';
-  const eq=state.equipped;
-  const bagAxe=findAxeInBag();
-  const axeEq=eq && AXE_BY_KEY[eq.key];
-  let toolSlot;
-  if(axeEq){
-    toolSlot='<div class="equip-slot filled"><span class="equip-slot-icon">'+eq.icon+'</span><span class="equip-slot-info"><span class="equip-slot-name">'+eq.name+'</span><span class="equip-slot-hint">Chop trees for logs · Tier '+(eq.tier ?? 0)+'</span></span><button class="equip-action-btn do-unequip" onclick="doUnequip()">UNEQUIP</button></div>';
-  }else if(bagAxe){
-    toolSlot='<div class="equip-slot"><span class="equip-slot-icon">'+bagAxe.icon+'</span><span class="equip-slot-info"><span class="equip-slot-name">'+bagAxe.name+'</span><span class="equip-slot-hint">In bag — equip to use · Tier '+bagAxe.tier+'</span></span><button class="equip-action-btn do-equip" onclick="doEquip()">EQUIP</button></div>';
-  }else{
-    toolSlot='<div class="equip-slot"><span class="equip-slot-icon" style="opacity:0.3">🔧</span><span class="equip-slot-info"><span class="equip-slot-name" style="opacity:0.4">No tool</span><span class="equip-slot-hint">Find tools to equip</span></span></div>';
-  }
   const bagEq=state.equippedBag;
   const bagInBag=findBagInBag();
   let bagSlot;
@@ -150,27 +171,9 @@ function renderEquipPanel(){
     bagSlot='<div class="equip-slot"><span class="equip-slot-icon" style="opacity:0.3">👝</span><span class="equip-slot-info"><span class="equip-slot-name" style="opacity:0.4">No bag</span><span class="equip-slot-hint">Weave a pouch at the loom</span></span></div>';
   }
   el.innerHTML='<div class="panel-title">⚔️ EQUIPMENT</div>'
-    +'<div style="font-family:var(--font-ui);font-size:11px;color:var(--ui-text-dim);letter-spacing:0.04em;margin-bottom:6px;">TOOL SLOT</div>'
-    +toolSlot
-    +'<div style="font-family:var(--font-ui);font-size:11px;color:var(--ui-text-dim);letter-spacing:0.04em;margin:10px 0 6px;">BAG SLOT</div>'
-    +bagSlot
-    +'<div class="equip-store"><s>Tool Store</s> <span class="lock-badge">🔒 LOCKED</span></div>';
+    +'<div style="font-family:var(--font-ui);font-size:11px;color:var(--ui-text-dim);letter-spacing:0.04em;margin-bottom:6px;">BAG SLOT</div>'
+    +bagSlot;
   w.appendChild(el);
-}
-
-function doEquip(){
-  const def = findAxeInBag();
-  if(!def || !equipAxeDef(def)) return;
-  closeAllPanels(); renderEquipPanel(); openPanel='equip';
-  syncUI(); showToast('🪓 '+def.name+' equipped! Now go use it.');
-}
-function doUnequip(){
-  if(!state.equipped)return;
-  const{key,icon,name}=state.equipped;
-  if(!invAdd(key,icon,name,1)){showToast("Bag is full! Can't unequip right now.");return;}
-  state.equipped=null;
-  closeAllPanels(); renderEquipPanel(); openPanel='equip';
-  syncUI(); showToast(icon+' '+name+' moved back to bag.');
 }
 
 function doEquipBag(){

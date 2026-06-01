@@ -13,17 +13,37 @@ const WOOD_ALLOW={
   singing_oak_only:['singing_oak'],
 };
 
+const FURNITURE_UTILITY_TAGLINES={
+  apothecary_table:'processes herbs',
+  wonky_loom:'used to make textiles',
+};
+
+function furnitureUtilityTagline(key){
+  return FURNITURE_UTILITY_TAGLINES[key]||'';
+}
+
+function furnitureUtilityTaglineHtml(key){
+  const text=furnitureUtilityTagline(key);
+  return text?'<span class="wb-furn-utility-tagline">'+text+'</span>':'';
+}
+
 const FURNITURE_TIERS={
-  simple:{ label:'Simple', order:1, code:'S' },
-  hardwood:{ label:'Hardwood', order:2, code:'H' },
-  artisan:{ label:'Artisan', order:3, code:'A' },
-  mythical:{ label:'Mythical', order:4, code:'M' },
+  simple:{ label:'Simple', order:2, code:'S' },
+  hardwood:{ label:'Hardwood', order:3, code:'H' },
+  artisan:{ label:'Artisan', order:4, code:'A' },
+  mythical:{ label:'Mythical', order:5, code:'M' },
+  barn:{ label:'Barn furniture', order:6, code:'B', subtitle:'Placeable in large barn' },
+};
+
+const CRAFT_EXTRA_MATERIALS={
+  cat_cushion:{ key:'cat_cushion', icon:'🧸', name:'Cat Cushion' },
 };
 
 /** Logs shown in UI / log picker per furniture tier. */
 const FURNITURE_TIER_WOODS={
   simple:['logs','ashwood','teak'],
   hardwood:['teak','yew','ebonwood','silverbirch','ironbark'],
+  barn:['ashwood','ebonwood'],
   artisan:['ebonwood','ironbark','yew'],
   mythical:['singing_oak'],
 };
@@ -32,7 +52,7 @@ const FURNITURE_TIER_WOODS={
 const FURNITURE_BONUS_WOOD='singing_oak';
 
 const FURNITURE_CRAFTS={
-  // ── Simple tier ──
+  // ── Simple tier (includes former home-made utility pieces) ──
   chair:{
     id:'chair', name:'Chair', icon:'🪑', tier:'simple',
     requiredCarpentryLevel:1, stages:3, baseFurnitureChance:10,
@@ -49,6 +69,14 @@ const FURNITURE_CRAFTS={
     furnitureKey:'bookshelf', skill:'carpentry',
     nailsPerAttempt:10, xpFail:2, xpStage:12, xpComplete:40, completeLabel:'bookshelf',
   },
+  bucket:{
+    id:'bucket', name:'Bucket', icon:'🪣', tier:'simple',
+    requiredCarpentryLevel:1, stages:3, baseFurnitureChance:50,
+    allowedWoods:'all', supplyKey:'bucket',
+    description:'A wooden bucket for wells, sand, and barn chores.',
+    skill:'carpentry',
+    nailsPerAttempt:10, xpFail:1, xpStage:5, xpComplete:25, completeLabel:'bucket',
+  },
   table:{
     id:'table', name:'Table', icon:'🍽️', tier:'simple',
     requiredCarpentryLevel:8, stages:4, baseFurnitureChance:45,
@@ -57,20 +85,21 @@ const FURNITURE_CRAFTS={
     furnitureKey:'table', skill:'carpentry',
     nailsPerAttempt:10, xpFail:2, xpStage:14, xpComplete:55, completeLabel:'table',
   },
+  // ── Former home-made utility (now simple tier) ──
   wonky_loom:{
     id:'wonky_loom', name:'Wonky Loom', icon:'🧵', tier:'simple',
     requiredCarpentryLevel:10, stages:5, baseFurnitureChance:48,
     allowedWoods:'all',
-    description:'A wobbly frame that somehow turns thread into fabric — just not very well.',
-    furnitureKey:'wonky_loom', skill:'carpentry', utility:true, makesFabric:true,
+    description:'A wobbly frame for weaving thread into cloth.',
+    furnitureKey:'wonky_loom', skill:'carpentry', utility:true,
     nailsPerAttempt:10, xpFail:2, xpStage:14, xpComplete:58, completeLabel:'wonky loom',
   },
   apothecary_table:{
     id:'apothecary_table', name:'Apothecary Table', icon:'⚗️', tier:'simple',
     requiredCarpentryLevel:13, stages:6, baseFurnitureChance:35,
     allowedWoods:'all',
-    description:'A sturdy work surface for sorting and preparing herbs.',
-    furnitureKey:'apothecary_table', skill:'carpentry', utility:true, unlocksBotany:true,
+    description:'A sturdy work surface for herbs and botany.',
+    furnitureKey:'apothecary_table', skill:'carpentry', utility:true,
     nailsPerAttempt:10, xpFail:2, xpStage:16, xpComplete:65, completeLabel:'apothecary table',
   },
   // ── Hardwood tier (starts Lv 20) ──
@@ -140,6 +169,35 @@ const FURNITURE_CRAFTS={
     furnitureKey:'mythical_chimes', skill:'carpentry',
     nailsPerAttempt:10, xpFail:2, xpStage:25, xpComplete:150, completeLabel:'chimes',
   },
+  // ── Barn furniture (placeable in large barn) ──
+  butter_churn:{
+    id:'butter_churn', name:'Butter Churn', icon:'🧈', tier:'barn',
+    requiredCarpentryLevel:15, stages:15, baseFurnitureChance:20,
+    requiredLogKey:'ashwood', logsPerAttempt:2,
+    allowedWoods:['ashwood'],
+    description:'Place in a large barn interior after crafting (Carpentry Lv 15).',
+    furnitureKey:'butter_churn', skill:'carpentry',
+    nailsPerAttempt:10, xpFail:3, xpStage:20, xpComplete:80, completeLabel:'butter churn',
+  },
+  cat_bed:{
+    id:'cat_bed', name:'Barn Cat Bed', icon:'🛏️', tier:'barn',
+    requiredCarpentryLevel:15, stages:5, baseFurnitureChance:40,
+    requiredLogKey:'ashwood', logsPerAttempt:5,
+    allowedWoods:['ashwood'],
+    extraInputs:[{ key:'cat_cushion', qty:1 }],
+    description:'Ashwood and a cat cushion — place in a large barn (Carpentry Lv 15).',
+    furnitureKey:'cat_bed', skill:'carpentry',
+    nailsPerAttempt:10, xpFail:3, xpStage:18, xpComplete:70, completeLabel:'barn cat bed',
+  },
+  storage_chest:{
+    id:'storage_chest', name:'Storage Chest', icon:'📦', tier:'barn',
+    requiredCarpentryLevel:40, stages:10, baseFurnitureChance:20,
+    requiredLogKey:'ebonwood', logsPerAttempt:10,
+    allowedWoods:['ebonwood'],
+    description:'Adds +100 barn storage when placed in a large barn (Carpentry Lv 40).',
+    furnitureKey:'storage_chest', skill:'carpentry',
+    nailsPerAttempt:10, xpFail:3, xpStage:18, xpComplete:75, completeLabel:'storage chest',
+  },
 };
 
 const SHELF_RECIPES={
@@ -165,7 +223,7 @@ const SHELF_RECIPES={
   },
 };
 
-const NAIL_TIER_ORDER = ['iron', 'copper', 'forged', 'ironbark', 'gilded'];
+const NAIL_TIER_ORDER = ['copper','bronze','iron','steel','titanium','gilded'];
 const NAIL_PICKER_ORDER = ['rusty', ...NAIL_TIER_ORDER];
 /** On failed attempt: 50% chance one nail is discarded. On success: 1–5 nails used. */
 const NAIL_FAIL_DISCARD_CHANCE = 0.5;
@@ -174,9 +232,19 @@ const NAIL_SUCCESS_USE_MAX = 5;
 
 const NAIL_TYPES = {
   rusty: { key:'rusty', icon:'📌', name:'Rusty Nails', bonus:0, infinite:true },
-  iron: { key:'iron', icon:'🔩', name:'Iron Nails', bonus:0.05, infinite:false },
-  copper: { key:'copper', icon:'🔩', name:'Copper Nails', bonus:0.10, infinite:false },
-  forged: { key:'forged', icon:'🔩', name:'Forged Nails', bonus:0.15, infinite:false },
-  ironbark: { key:'ironbark', icon:'🔩', name:'Ironbark Nails', bonus:0.20, infinite:false },
+  copper: { key:'copper', icon:'🔩', name:'Copper Nails', bonus:0.05, infinite:false },
+  bronze: { key:'bronze', icon:'🔩', name:'Bronze Nails', bonus:0.10, infinite:false },
+  iron: { key:'iron', icon:'🔩', name:'Iron Nails', bonus:0.15, infinite:false },
+  steel: { key:'steel', icon:'🔩', name:'Steel Nails', bonus:0.20, infinite:false },
+  titanium: { key:'titanium', icon:'🔩', name:'Titanium Nails', bonus:0.25, infinite:false },
   gilded: { key:'gilded', icon:'✨', name:'Gilded Nails', bonus:0.25, infinite:false },
+};
+
+/** Old save keys → new nail tier keys (one-time migration). */
+const NAIL_KEY_MIGRATION={
+  iron:'copper',
+  copper:'bronze',
+  forged:'iron',
+  ironbark:'steel',
+  gilded:'gilded',
 };

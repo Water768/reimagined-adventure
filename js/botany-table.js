@@ -6,9 +6,11 @@ function buildApothecaryUtilityMenuItem(x,y){
   if(!def) return '';
   const stock=itemCountBagAndStore(APOTHECARY_FURNITURE_KEY);
   const hasStock=stock>0;
-  const drops=hasStock
-    ?(stock===1?'1 available — ready to place':formatAvailableCount(stock)+' — ready to place')
-    :'Craft one at the workbench first';
+  const tagHtml=typeof furnitureUtilityTaglineHtml==='function'?furnitureUtilityTaglineHtml(APOTHECARY_FURNITURE_KEY):'';
+  const drops=(hasStock
+    ?formatRecipeMatLine(def?.name||'Botany table', 1, stock)+' — ready to place'
+    :'Craft one at the workbench first')
+    +(tagHtml?' · '+tagHtml:'');
   const cls='plot-add-item '+(hasStock?'structure-unlocked':'structure-locked below-rec is-disabled');
   return '<button type="button" class="'+cls+'"'+(hasStock?'':' disabled')+(hasStock?' onclick="placeInteriorApothecaryTable('+x+','+y+')"':'')+'>'
     +'<span class="plot-add-item-icon">'+def.icon+'</span>'
@@ -208,7 +210,7 @@ function botanyProcessRecipeRewardLine(recipe){
     return '+'+(recipe.affinityXp||0)+' Earth • Mint or Sage';
   }
   const parts=['+'+recipe.xp+' Botany'];
-  if(recipe.tailoringXp) parts.push('+'+recipe.tailoringXp+' Tailoring');
+  if(recipe.craftingXp||recipe.tailoringXp) parts.push('+'+(recipe.craftingXp||recipe.tailoringXp)+' Crafting');
   return parts.join(' • ');
 }
 
@@ -223,13 +225,13 @@ function apothecaryRecipeXpPreview(recipe){
     return 'Crush: +'+(recipe.affinityXp||0)+' Earth affinity';
   }
   let line='Process: +'+recipe.xp+' Botany';
-  if(recipe.tailoringXp) line+=' • +'+recipe.tailoringXp+' Tailoring';
+  if(recipe.craftingXp||recipe.tailoringXp) line+=' • +'+(recipe.craftingXp||recipe.tailoringXp)+' Crafting';
   return line;
 }
 
 function apothecaryProcessXpLogLine(recipe){
   let line='+'+recipe.xp+' Botany';
-  if(recipe.tailoringXp) line+=' • +'+recipe.tailoringXp+' Tailoring';
+  if(recipe.craftingXp||recipe.tailoringXp) line+=' • +'+(recipe.craftingXp||recipe.tailoringXp)+' Crafting';
   return line;
 }
 
@@ -364,13 +366,11 @@ function identifyOneHerb(){
   const herbKey=rollIdentifiedHerbKey();
   const herb=getHerbDef(herbKey);
   if(!herb){
-    if(!state.storage.basic_herbs) state.storage.basic_herbs={icon:'🌿',name:'Basic Herbs',count:0};
-    state.storage.basic_herbs.count++;
+    stackAdd(state.storage, 'basic_herbs', 1);
     return {ok:false};
   }
   if(invTotal()>=getInvCap()){
-    if(!state.storage.basic_herbs) state.storage.basic_herbs={icon:'🌿',name:'Basic Herbs',count:0};
-    state.storage.basic_herbs.count++;
+    stackAdd(state.storage, 'basic_herbs', 1);
     showToast('Bag full — make space before identifying herbs.');
     if(currentScreen==='botany-table-screen') renderApothecaryScreen();
     return {ok:false,returned:true};
@@ -416,8 +416,9 @@ function doApothecaryProcessAttempt(recipeKey){
   const out=getBotanyItemDef(recipe.outputKey);
   invAddDirect(out.key,out.icon,out.name,1,{ pickupBaseline:invBefore });
   grantXP('botany',recipe.xp,null,{ deferSync:apothProcess.running, keepActivities:true });
-  if(recipe.tailoringXp){
-    grantXP('tailoring',recipe.tailoringXp,null,{ deferSync:apothProcess.running, keepActivities:true });
+  const craftXp=recipe.craftingXp||recipe.tailoringXp;
+  if(craftXp){
+    grantXP('crafting',craftXp,null,{ deferSync:apothProcess.running, keepActivities:true });
   }
   const xpMsg=apothecaryProcessXpLogLine(recipe);
   addActivityLog('botany-log',out.icon+' '+out.name+' prepared! '+xpMsg,'success');

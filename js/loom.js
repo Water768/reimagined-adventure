@@ -6,9 +6,11 @@ function buildWonkyLoomUtilityMenuItem(x,y){
   if(!def) return '';
   const stock=itemCountBagAndStore(WONKY_LOOM_FURNITURE_KEY);
   const hasStock=stock>0;
-  const drops=hasStock
-    ?(stock===1?'1 available — ready to place':formatAvailableCount(stock)+' — ready to place')
-    :'Craft one at the workbench first';
+  const tagHtml=typeof furnitureUtilityTaglineHtml==='function'?furnitureUtilityTaglineHtml(WONKY_LOOM_FURNITURE_KEY):'';
+  const drops=(hasStock
+    ?formatRecipeMatLine(def?.name||'Loom', 1, stock)+' — ready to place'
+    :'Craft one at the workbench first')
+    +(tagHtml?' · '+tagHtml:'');
   const cls='plot-add-item '+(hasStock?'structure-unlocked':'structure-locked below-rec is-disabled');
   return '<button type="button" class="'+cls+'"'+(hasStock?'':' disabled')+(hasStock?' onclick="placeInteriorWonkyLoom('+x+','+y+')"':'')+'>'
     +'<span class="plot-add-item-icon">'+def.icon+'</span>'
@@ -334,15 +336,15 @@ function loomSuccessPctLabel(recipe, inputOpt){
 }
 
 function loomRecipeLevelBadge(recipe){
-  return plotAddLevelBadge('tailoring', Number(state.skills.tailoring?.level)||1, recipe.requiredTailoringLevel||1, recipe.requiredTailoringLevel||1);
+  return plotAddLevelBadge('crafting', Number(state.skills.crafting?.level)||1, recipe.requiredCraftingLevel||1, recipe.requiredCraftingLevel||1);
 }
 
 function loomRecipeXpPreview(recipe){
   const opt=getLoomActiveInputOpt(recipe);
   const pct=loomSuccessPct(recipe, opt);
-  const lvl=Number(state.skills.tailoring?.level)||1;
-  return '<span class="wb-xp-line">Success: +'+recipe.xpSuccess+' Tailoring • Fail: +'+recipe.xpFail+' Tailoring</span>'
-    +'<span class="wb-xp-line">'+pct+'% success at Tailoring Lvl '+lvl+'</span>';
+  const lvl=Number(state.skills.crafting?.level)||1;
+  return '<span class="wb-xp-line">Success: +'+recipe.xpSuccess+' Crafting • Fail: +'+recipe.xpFail+' Crafting</span>'
+    +'<span class="wb-xp-line">'+pct+'% success at Crafting Lvl '+lvl+'</span>';
 }
 
 function loomInputBagConsumption(recipe){
@@ -351,7 +353,7 @@ function loomInputBagConsumption(recipe){
     const opt=pickLoomInputOption(inp, recipe.id);
     if(!opt) return null;
     const need=opt.qty||1;
-    const inBag=state.inventory[opt.key]?.count||0;
+    const inBag=invCount(opt.key);
     fromBag+=Math.min(inBag, need);
   }
   return fromBag;
@@ -366,8 +368,8 @@ function canStoreLoomResult(recipe){
 function loomRecipeBlockReason(recipe){
   if(!recipe) return { type:'unknown' };
   if(recipe.lockedOnWonkyLoom) return { type:'locked', message:LOOM_LINEN_LOCKED_MSG };
-  const lvl=Number(state.skills.tailoring?.level)||1;
-  if(lvl<(recipe.requiredTailoringLevel||1)) return { type:'level', required:recipe.requiredTailoringLevel||1 };
+  const lvl=Number(state.skills.crafting?.level)||1;
+  if(lvl<(recipe.requiredCraftingLevel||1)) return { type:'level', required:recipe.requiredCraftingLevel||1 };
   for(const inp of recipe.inputs){
     if(!pickLoomInputOption(inp, recipe.id)) return { type:'input', inp };
   }
@@ -554,8 +556,8 @@ function doLoomWeaveAttempt(recipeKey){
       return { ok:false };
     }
     invAddDirect(out.key,out.icon,out.name,1,{ pickupBaseline:invBefore });
-    grantXP('tailoring',recipe.xpSuccess,null,{ deferSync:loomProcess.running, keepActivities:true });
-    addActivityLog('loom-log',out.icon+' '+out.name+' woven! +'+recipe.xpSuccess+' Tailoring','success');
+    grantXP('crafting',recipe.xpSuccess,null,{ deferSync:loomProcess.running, keepActivities:true });
+    addActivityLog('loom-log',out.icon+' '+out.name+' woven! +'+recipe.xpSuccess+' Crafting','success');
     if(!loomProcess.running) showToast(out.icon+' '+out.name+' woven!');
   }else{
     const lost=rollLoomFailLoss(needQty);
@@ -564,8 +566,8 @@ function doLoomWeaveAttempt(recipeKey){
       return { ok:false };
     }
     const snagMsg=loomSnagFailMessage(picked, lost, needQty);
-    grantXP('tailoring',recipe.xpFail,null,{ deferSync:loomProcess.running, keepActivities:true });
-    addActivityLog('loom-log',snagMsg+' +'+recipe.xpFail+' Tailoring ('+Math.round(rate*100)+'% was the odds)','fail');
+    grantXP('crafting',recipe.xpFail,null,{ deferSync:loomProcess.running, keepActivities:true });
+    addActivityLog('loom-log',snagMsg+' +'+recipe.xpFail+' Crafting ('+Math.round(rate*100)+'% was the odds)','fail');
     if(!loomProcess.running) showToast(snagMsg);
   }
   if(!loomProcess.running) syncUI();
@@ -685,9 +687,9 @@ function renderLoomActivityButtons(){
 
 function renderLoomScreen(){
   migrateLoomRecipeKey();
-  updateActivitySkillPill('loom', 'tailoring');
+  updateActivitySkillPill('loom', 'crafting');
   const subEl=document.getElementById('loom-subtitle');
-  if(subEl) subEl.textContent='Tailoring skill • weave thread and fiber';
+  if(subEl) subEl.textContent='Crafting skill • weave thread and fiber';
   renderLoomRecipePanel();
   renderLoomActivityButtons();
   updateLoomCellQuickAction();

@@ -36,7 +36,7 @@ const PLOT_TILE_MENU = [
     id:'structures',
     label:'Structures',
     desc:'Permanent builds that upgrade your homestead.',
-    items:['well','well_finished','well_hydrated','fire_pit','simple_kiln'],
+    items:['well','well_finished','well_hydrated','fire_pit','simple_kiln','washing_line','small_barn','small_barn_walls','small_barn_doorless','small_barn_complete','medium_barn_complete','large_barn_complete'],
   },
   {
     id:'farming',
@@ -52,12 +52,13 @@ const DEFAULT_INTERIOR_LAYOUT = [
 ];
 const INTERIOR_ROOM_DEFS = {
   storeroom: { typeId:'storeroom', name:'Store Room', icon:'🗄️', desc:'Deposit bag overflow and install shelves for +50 capacity each.', instanced:true },
+  tool_store: { typeId:'tool_store', name:'Tool Storage', icon:'🧰', desc:'Tools and Bulk Storage — equip tools once, forever; extra room for buckets, materials, rope, and nails.' },
   workbench: { typeId:'workbench', name:'Workbench', icon:'🪚', desc:'Craft furniture, shelves, and carpentry projects.' },
   fireplace: { typeId:'fireplace', name:'Fireplace', icon:'🔥', desc:'Cook raw fish and stoke the hearth for Fire skill.' },
   wardrobe:  { typeId:'wardrobe',  name:'Wardrobe',  icon:'🚪', desc:'Change clothes and stash outfits out of the way.' },
   picture:   { typeId:'picture',   name:'Picture',   icon:'🖼️', desc:'A crooked frame — poke it and see what falls loose.' },
   dogbed:    { typeId:'dogbed',    name:'Dog Bed',   icon:'🛏️', desc:'Tidy up, manage pets, and unlock husbandry perks.' },
-  spinningwheel: { typeId:'spinningwheel', name:'Spinning Wheel', icon:'🎡', desc:'Spin fibers into thread — basic, medium, and enhanced.' },
+  spinningwheel: { typeId:'spinningwheel', name:'Spinning Wheel', icon:'🎡', desc:'Spin fibers into thread, or twist thread and flax into rope.' },
   apothecary_table: { typeId:'apothecary_table', name:'Apothecary Table', icon:'⚗️', desc:'Identify foraged herbs and unlock botany work.' },
   wonky_loom: { typeId:'wonky_loom', name:'Wonky Loom', icon:'🧵', desc:'Weave thread and fiber into cloth — wobbly, but it works.' },
 };
@@ -77,8 +78,17 @@ const CHAIR_SIT_LINES=[
   'Outside, something moves in the grass. You do not need to check. Not everything asks for your attention.',
   'The wood is warm where the sun touched it through the window. You stay a little longer.',
 ];
-const INTERIOR_ROOM_MENU = ['storeroom','workbench','fireplace','spinningwheel','wardrobe','picture','dogbed'];
+const INTERIOR_ROOM_MENU = ['storeroom','tool_store','workbench','fireplace','spinningwheel','wardrobe','picture','dogbed'];
 
 const ARCH_ROOM_BONUS_BASE_XP = 5000;
 const ARCH_ROOM_BONUS_SCALE = 1.3;
 const ARCH_ROOM_BONUS_FIRST_ROOM = 10;
+
+/** Extra per-item capacity each tool store on the map adds (requires a store room for any storage). */
+const TOOL_STORE_BULK_CAPS = {
+  bucket: 500,
+  brick: 500,
+  slate: 500,
+  rope: 500,
+};
+const TOOL_STORE_NAIL_BULK_CAP = 5000;

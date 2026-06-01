@@ -100,10 +100,11 @@ function buildEmptyVesselQueue(){
   const byKey={};
   WATER_VESSELS.forEach(v=>{ byKey[v.emptyKey]=v; });
   const queue=[];
-  Object.entries(state.inventory).forEach(([itemKey,item])=>{
+  Object.keys(state.inventory).forEach((itemKey)=>{
     const vessel=byKey[itemKey];
-    if(!vessel||!item?.count) return;
-    for(let i=0;i<item.count;i++) queue.push(vessel);
+    const count=typeof stackCount==='function'?stackCount(state.inventory,itemKey):(state.inventory[itemKey]?.count||0);
+    if(!vessel||!count) return;
+    for(let i=0;i<count;i++) queue.push(vessel);
   });
   return queue;
 }

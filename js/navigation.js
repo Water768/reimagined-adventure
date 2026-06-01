@@ -4,32 +4,7 @@
 /* ═══════════════════════════════════════
    NAVIGATION
 ═══════════════════════════════════════ */
-const ALL_SCREENS=['intro-screen','exterior-screen','interior-screen','skills-screen','workbench-screen','storeroom-screen','fishing-screen','gathering-screen','woodcutting-screen','mining-screen','exploring-screen','fireplace-screen','spinningwheel-screen','loom-screen','botany-table-screen','pets-screen','well-screen','fire-pit-screen','kiln-screen','farming-screen'];
-const HUT_OVERLAY_SCREENS=new Set(['workbench-screen','storeroom-screen','fireplace-screen','spinningwheel-screen','loom-screen','botany-table-screen','pets-screen']);
-const WORLD_OVERLAY_SCREENS=new Set(['fishing-screen','gathering-screen','woodcutting-screen','mining-screen','exploring-screen','well-screen','fire-pit-screen','kiln-screen','farming-screen']);
-const OVERLAY_CLOSE_FN={
-  'workbench-screen':()=>{ if(typeof closeWorkbench==='function') closeWorkbench(); },
-  'storeroom-screen':()=>{ if(typeof closeStoreRoom==='function') closeStoreRoom(); },
-  'fireplace-screen':()=>{ if(typeof closeFireplaceScreen==='function') closeFireplaceScreen(); },
-  'spinningwheel-screen':()=>{ if(typeof closeSpinningWheelScreen==='function') closeSpinningWheelScreen(); },
-  'loom-screen':()=>{ if(typeof closeLoomScreen==='function') closeLoomScreen(); },
-  'botany-table-screen':()=>{ if(typeof closeBotanyTableScreen==='function') closeBotanyTableScreen(); },
-  'pets-screen':()=>{ if(typeof closePetsScreen==='function') closePetsScreen(); },
-  'fishing-screen':()=>{ if(typeof closeFishing==='function') closeFishing(); },
-  'gathering-screen':()=>{ if(typeof closeGathering==='function') closeGathering(); },
-  'woodcutting-screen':()=>{ if(typeof closeWoodcutting==='function') closeWoodcutting(); },
-  'mining-screen':()=>{ if(typeof closeMining==='function') closeMining(); },
-  'exploring-screen':()=>{ if(typeof closeExploring==='function') closeExploring(); },
-  'well-screen':()=>{ if(typeof closeWellScreen==='function') closeWellScreen(); },
-  'fire-pit-screen':()=>{ if(typeof closeFirePitScreen==='function') closeFirePitScreen(); },
-  'kiln-screen':()=>{ if(typeof closeKilnScreen==='function') closeKilnScreen(); },
-  'farming-screen':()=>{ if(typeof closeFarmScreen==='function') closeFarmScreen(); },
-};
 let currentScreen='intro-screen', lastHome='exterior-screen', skillsReturnScreen='exterior-screen';
-
-function isActiveOverlayScreen(id){
-  return HUT_OVERLAY_SCREENS.has(id)||WORLD_OVERLAY_SCREENS.has(id);
-}
 
 function isOverlayChromeOrPanelTarget(target){
   if(!target) return false;
@@ -41,6 +16,7 @@ function isOverlayChromeOrPanelTarget(target){
     ||target.closest('.found-banner')
     ||target.closest('#banner-dim')
     ||target.closest('.plot-add-menu')
+    ||target.closest('#barn-int-place-menu')
     ||target.closest('#interior-build-menu')
   );
 }
@@ -51,8 +27,7 @@ function dismissActiveOverlayScreen(){
     closeAllPanels();
     return true;
   }
-  const closeFn=OVERLAY_CLOSE_FN[currentScreen];
-  if(closeFn){ closeFn(); return true; }
+  if(runScreenCloseFn(currentScreen)) return true;
   return false;
 }
 
@@ -65,7 +40,7 @@ function handleOverlayScreenDismiss(e){
 }
 
 function initOverlayDismiss(){
-  [...HUT_OVERLAY_SCREENS, ...WORLD_OVERLAY_SCREENS].forEach(id=>{
+  getOverlayScreenIds().forEach(id=>{
     const el=document.getElementById(id);
     if(!el||el.dataset.overlayDismissBound) return;
     el.dataset.overlayDismissBound='1';
@@ -78,22 +53,34 @@ function showScreen(id){
   skillFlashKey=null;
   clearTimeout(skillFlashTimer);
   skillFlashTimer=null;
-  if(currentScreen==='farming-screen'&&id!=='farming-screen'&&typeof stopFarmTimer==='function') stopFarmTimer();
+  const prevScreen=currentScreen;
+  if(prevScreen==='barn-interior-screen'&&id!=='barn-interior-screen'
+    &&typeof closeBarnInteriorPlaceMenu==='function'){
+    closeBarnInteriorPlaceMenu();
+  }
+  runScreenOnLeave(currentScreen, id);
   if(document.activeElement?.blur) document.activeElement.blur();
-  const hutOverlay=HUT_OVERLAY_SCREENS.has(id);
-  const worldOverlay=WORLD_OVERLAY_SCREENS.has(id);
-  ALL_SCREENS.forEach(s=>{
+  const hutOverlay=isHutOverlayScreen(id);
+  const worldOverlay=isWorldOverlayScreen(id);
+  const barnMenu=id==='barn-screen';
+  const barnFromInterior=barnMenu&&prevScreen==='barn-interior-screen';
+  getRegisteredScreenIds().forEach(s=>{
     const el=document.getElementById(s);
     if(!el) return;
     const isTarget=s===id;
     const keepInterior=hutOverlay&&s==='interior-screen';
-    const keepExterior=worldOverlay&&s==='exterior-screen';
-    el.classList.toggle('active', isTarget||keepInterior||keepExterior);
+    const keepBarnInterior=barnFromInterior&&s==='barn-interior-screen';
+    const keepExterior=worldOverlay&&s==='exterior-screen'&&!barnFromInterior;
+    el.classList.toggle('active', isTarget||keepInterior||keepExterior||keepBarnInterior);
     el.classList.toggle('hut-overlay', hutOverlay&&isTarget);
-    el.classList.toggle('world-overlay', worldOverlay&&isTarget);
-    el.classList.toggle('under-overlay', keepInterior||keepExterior);
+    el.classList.toggle('world-overlay', worldOverlay&&isTarget&&!barnFromInterior);
+    el.classList.toggle('barn-interior-overlay', barnFromInterior&&isTarget);
+    el.classList.toggle('under-overlay', keepInterior||keepExterior||keepBarnInterior);
   });
   currentScreen=id;
+  if(id!=='barn-interior-screen'&&typeof closeBarnInteriorPlaceMenu==='function'){
+    closeBarnInteriorPlaceMenu();
+  }
   if(id!=='exterior-screen'){
     closePlotAddMenu();
     if(state.plot?.editMode){
@@ -107,17 +94,20 @@ function showScreen(id){
   }
   const wb=document.getElementById('world-backdrop');
   if(wb){
-    const world=id==='exterior-screen'||id==='interior-screen'||hutOverlay||worldOverlay;
+    const onBarnInterior=id==='barn-interior-screen'||barnFromInterior;
+    const world=id==='exterior-screen'||id==='interior-screen'||hutOverlay||worldOverlay||id==='barn-interior-screen';
     wb.classList.toggle('visible', world);
-    wb.classList.toggle('interior', id==='interior-screen'||hutOverlay);
+    wb.classList.toggle('interior', id==='interior-screen'||hutOverlay||onBarnInterior);
   }
   updateActivitySkillDisplays();
+  if(typeof updatePlotUnlockDisplays==='function') updatePlotUnlockDisplays();
 }
 function startGame(){
   state.gameStarted=true;
   showScreen('exterior-screen');
   lastHome='exterior-screen';
   updateSaveButtonUI();
+  if(typeof updatePlotUnlockDisplays==='function') updatePlotUnlockDisplays();
   scheduleSaveGame();
   showToast("Welcome home. Such as it is. 🏡");
 }

@@ -76,7 +76,7 @@ const BOTANY_APOTHECARY_RECIPES={
     inputs:[{ key:'clean_bandage', qty:1 }, { key:'aloe_gel', qty:1 }],
     requiredBotanyLevel:3,
     xp:18,
-    tailoringXp:18,
+    craftingXp:18,
   },
   improved_soothing_bandage:{
     id:'improved_soothing_bandage', kind:'process',

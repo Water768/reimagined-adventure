@@ -5,20 +5,22 @@
    PERSISTENCE (localStorage)
 ═══════════════════════════════════════ */
 const SAVE_KEY='hearthstead-save';
-const SAVE_VERSION=3;
+const SAVE_VERSION=6;
+/** Debounced autosave delay (ms) — inventory ticks no longer trigger this via syncUI. */
+const SAVE_DEBOUNCE_MS=2500;
 let saveGameTimer=null;
 let saveLoadFinished=false;
 let saveLoadSucceeded=false;
+/** Blocks beforeunload / autosave while wiping (reload was re-saving after clear). */
+let savePersistenceDisabled=false;
 
 function canPersistGameState(){
+  if(savePersistenceDisabled) return false;
   if(!saveLoadFinished) return false;
+  // Never autosave a fresh session just because localStorage is empty (boot migrations
+  // seed plot cells before the player starts — that was recreating "deleted" saves).
   if(saveLoadSucceeded) return true;
-  if(state.gameStarted) return true;
-  try{
-    return !localStorage.getItem(SAVE_KEY);
-  }catch(_err){
-    return false;
-  }
+  return !!state.gameStarted;
 }
 
 function deepMergeDefaults(defaults, saved){
@@ -44,6 +46,7 @@ function deepMergeDefaults(defaults, saved){
 function serializeGameState(){
   runPreSerializeMigrations();
   runVersionedSaveMigrations();
+  if(typeof normalizeInventoryState==='function') normalizeInventoryState();
   const copy=JSON.parse(JSON.stringify(state));
   if(copy.plot) copy.plot.editMode=false;
   if(copy.interior) copy.interior.buildMode=false;
@@ -59,12 +62,12 @@ function runPreSerializeMigrations(){
 function runAllSaveMigrations(){
   try{
     fillMissingSkillKeys();
-    if(typeof migrateWell==='function') migrateWell();
-    if(typeof migrateFirePit==='function') migrateFirePit();
-    if(typeof migrateKiln==='function') migrateKiln();
+    if(typeof migrateAllPlotStructures==='function') migrateAllPlotStructures();
     migrateItemKeys();
+    if(typeof migrateLeanInventory==='function') migrateLeanInventory();
     migratePets();
-    migrateEquippedAxe();
+    migrateTailoringToCrafting();
+    migrateToolStoreTools();
     migrateEquippedBag();
     migratePlot();
     migrateInterior();
@@ -92,6 +95,8 @@ function runPostLoadMigrations(){
   runVersionedSaveMigrations();
   if(typeof migrateCleanBandageKey==='function') migrateCleanBandageKey();
   if(typeof migrateLoomRecipeKey==='function') migrateLoomRecipeKey();
+  if(typeof migrateLeanInventory==='function') migrateLeanInventory();
+  if(typeof trimStorageToCapacity==='function') trimStorageToCapacity();
 }
 
 function applySavedState(saved){
@@ -156,6 +161,16 @@ function loadGameState(){
   saveLoadFinished=false;
   saveLoadSucceeded=false;
   try{
+    const params=new URLSearchParams(location.search);
+    if(params.get('fresh')==='1'){
+      clearGameSave();
+      try{
+        const clean=location.pathname+location.hash;
+        history.replaceState(null,'',clean);
+      }catch(_urlErr){ /* ignore */ }
+      saveLoadFinished=true;
+      return false;
+    }
     const raw=localStorage.getItem(SAVE_KEY);
     if(!raw){
       saveLoadFinished=true;
@@ -173,6 +188,7 @@ function loadGameState(){
     }
     saveLoadFinished=true;
     saveLoadSucceeded=true;
+    if(typeof markDirty==='function') markDirty('all');
     return true;
   }catch(err){
     console.warn('[Hearthstead] Could not load save:', err);
@@ -192,27 +208,104 @@ function clearGameSave(){
   }
 }
 
-function scheduleSaveGame(){
+/**
+ * Queue a debounced save. Prefer over calling saveGameState directly during gameplay.
+ * @param {{ immediate?: boolean, delay?: number }} [opts]
+ */
+function requestSaveGame(opts){
   if(!canPersistGameState()) return;
+  const delay=opts?.immediate?0:(opts?.delay??SAVE_DEBOUNCE_MS);
   clearTimeout(saveGameTimer);
-  saveGameTimer=setTimeout(saveGameState, 400);
+  saveGameTimer=setTimeout(()=>{
+    saveGameTimer=null;
+    saveGameState();
+  }, delay);
+}
+
+/** @deprecated Use requestSaveGame — kept for existing call sites */
+function scheduleSaveGame(){
+  requestSaveGame();
+}
+
+function saveGameNow(){
+  clearTimeout(saveGameTimer);
+  saveGameTimer=null;
+  return saveGameState();
+}
+
+const DEV_PLAYTEST_SKILL_LEVEL=30;
+const DEV_PLAYTEST_ITEM_COUNT=300;
+const DEV_PLAYTEST_SKIP_ITEM_CATEGORIES=new Set(['junk','furniture','unknown']);
+
+function devSetAllSkillsToLevel(level){
+  if(typeof fillMissingSkillKeys==='function') fillMissingSkillKeys();
+  const lvl=Math.max(1, level|0);
+  Object.keys(state.skills||{}).forEach((key)=>{
+    const s=state.skills[key];
+    if(!s) return;
+    s.level=lvl;
+    s.xp=0;
+    s.xpToNext=typeof xpForLevel==='function'?xpForLevel(lvl):100;
+  });
+}
+
+function devGrantUsefulItems(count){
+  const n=Math.max(0, count|0);
+  if(!n||typeof ITEM_REGISTRY==='undefined') return 0;
+  let granted=0;
+  Object.keys(ITEM_REGISTRY).forEach((key)=>{
+    const def=ITEM_REGISTRY[key];
+    if(!def||DEV_PLAYTEST_SKIP_ITEM_CATEGORIES.has(def.category)) return;
+    if(def.stackable===false){
+      stackSet(state.inventory, key, 1, { silent:true });
+      granted++;
+      return;
+    }
+    stackSet(state.storage, key, n, { silent:true });
+    granted++;
+  });
+  if(typeof markDirty==='function') markDirty('inventory');
+  return granted;
+}
+
+function devPlaytestReset(){
+  if(!saveLoadFinished){
+    showToast('Still loading — try again in a moment.');
+    return;
+  }
+  if(!state.gameStarted){
+    showToast('Start playing first, then use Reset.');
+    return;
+  }
+  if(!confirm('Set all skills to level '+DEV_PLAYTEST_SKILL_LEVEL+' and grant '+DEV_PLAYTEST_ITEM_COUNT+' of each useful item? Your save is kept — use Save after.')){
+    return;
+  }
+  devSetAllSkillsToLevel(DEV_PLAYTEST_SKILL_LEVEL);
+  const itemTypes=devGrantUsefulItems(DEV_PLAYTEST_ITEM_COUNT);
+  if(typeof migratePlot==='function') migratePlot();
+  if(typeof markDirty==='function') markDirty('skills','inventory','activity');
+  if(typeof flushDirty==='function') flushDirty();
+  else if(typeof syncUI==='function') syncUI('full');
+  requestSaveGame({ immediate:true });
+  showQuickToast('Playtest reset — Lv '+DEV_PLAYTEST_SKILL_LEVEL+', '+itemTypes+' item types stocked.');
 }
 
 function updateSaveButtonUI(){
-  const btn=document.getElementById('save-game-btn');
-  if(btn) btn.hidden=!state.gameStarted;
+  const bar=document.getElementById('game-dev-bar');
+  if(!bar) return;
+  let hasSave=false;
+  try{ hasSave=!!localStorage.getItem(SAVE_KEY); }catch(_err){ hasSave=false; }
+  bar.hidden=!state.gameStarted&&!hasSave;
 }
 
 let saveBtnFlashTimer=null;
 function manualSaveGame(){
-  clearTimeout(saveGameTimer);
-  saveGameTimer=null;
   if(!saveLoadFinished){
     showToast('Still loading — try again in a moment.');
     return;
   }
   const btn=document.getElementById('save-game-btn');
-  const ok=saveGameState();
+  const ok=saveGameNow();
   if(ok){
     showQuickToast('Game saved.');
     if(btn){
@@ -226,8 +319,47 @@ function manualSaveGame(){
 }
 
 function resetGameState(){
+  wipeToFreshGame({ silent:true });
+}
+
+function wipeToFreshGame(opts){
+  opts=opts||{};
+  savePersistenceDisabled=true;
+  clearTimeout(saveGameTimer);
+  saveGameTimer=null;
   clearGameSave();
+
   saveLoadFinished=true;
   saveLoadSucceeded=false;
   applySavedState(getDefaultState());
+
+  if(typeof resetTransientUiState==='function') resetTransientUiState();
+  if(typeof stopAllActivities==='function') stopAllActivities();
+  if(typeof closeAllPanels==='function') closeAllPanels();
+
+  if(typeof lastHome!=='undefined') lastHome='exterior-screen';
+  if(typeof showScreen==='function') showScreen('intro-screen');
+
+  if(typeof plotNeedsHomeCenter!=='undefined') plotNeedsHomeCenter=true;
+  if(typeof interiorNeedsHomeCenter!=='undefined') interiorNeedsHomeCenter=true;
+  if(typeof initPlotGrid==='function') initPlotGrid();
+  if(typeof initInteriorGrid==='function') initInteriorGrid();
+  if(typeof updateSaveButtonUI==='function') updateSaveButtonUI();
+  if(typeof markDirty==='function') markDirty('all');
+  if(typeof syncUIFull==='function') syncUIFull();
+  else if(typeof syncUI==='function') syncUI('full');
+
+  savePersistenceDisabled=false;
+
+  let stillSaved=false;
+  try{ stillSaved=!!localStorage.getItem(SAVE_KEY); }catch(_err){ stillSaved=false; }
+  if(!opts.silent){
+    if(stillSaved) showToast('Save could not be cleared — check browser storage permissions.');
+    else showQuickToast('New game — progress cleared. Tap BEGIN when ready.');
+  }
+}
+
+function deleteSaveAndRestart(){
+  if(!confirm('Delete your save and start a brand-new game? This cannot be undone.')) return;
+  wipeToFreshGame();
 }

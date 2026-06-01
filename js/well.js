@@ -45,10 +45,7 @@ function resolveWellInstanceId(eventOrCell){
 }
 
 function forEachWellSlot(fn){
-  if(typeof forEachPlotOccupied!=='function') return;
-  forEachPlotOccupied((x,y,slot)=>{
-    if(getPlotTileDef(slot.typeId)?.behavior==='well') fn(x,y,slot);
-  });
+  if(typeof forEachPlotStructureSlot==='function') forEachPlotStructureSlot('well', fn);
 }
 
 function countWellsOnPlot(){
@@ -188,7 +185,7 @@ function completeWell(instanceId){
   instanceId=instanceId||activeWellInstanceId;
   const cfg=getWellConfig(instanceId);
   if(!cfg) return;
-  const showBanner=!cfg.bucketless;
+  const showBanner=!state.wellUnlocked;
   cfg.bricks=WELL_BRICKS_REQUIRED;
   cfg.bucketless=true;
   unlockWells();
@@ -199,15 +196,17 @@ function completeWell(instanceId){
     syncUI();
   };
   if(showBanner){
-    showFoundBanner(
-      'WELL BUILT!',
-      '🪣',
-      'The walls are up — add a rope and bucket to finish it.'+structureCompleteBonusBannerSuffix('well'),
-      'GOT IT',
-      refreshWellUi
-    );
+    showStructureBuiltBanner({
+      bonusKey:'well',
+      title:'WELL BUILT!',
+      icon:'🪣',
+      body:'The walls are up — add a rope and bucket to finish it.',
+      btnText:'GOT IT',
+      cb:refreshWellUi,
+    });
+  }else{
+    refreshWellUi();
   }
-  refreshWellUi();
 }
 
 function finishWell(instanceId){
@@ -238,15 +237,17 @@ function finishWell(instanceId){
     syncUI();
   };
   if(showBanner){
-    showFoundBanner(
-      'WELL READY!',
-      '🪣',
-      'Rope and bucket fitted — dry wells are now free to place. Hydrate one when it rains.',
-      'GOT IT',
-      refreshWellUi
-    );
+    showStructureBuiltBanner({
+      bonusKey:'well_equipped',
+      title:'WELL READY!',
+      icon:'🪣',
+      body:'Rope and bucket fitted — dry wells are now free to place. Hydrate one when it rains.',
+      btnText:'GOT IT',
+      cb:refreshWellUi,
+    });
+  }else{
+    refreshWellUi();
   }
-  refreshWellUi();
   return true;
 }
 
@@ -274,13 +275,14 @@ function hydrateWell(instanceId){
     syncUI();
   };
   if(showBanner){
-    showFoundBanner(
-      'WELL FILLED!',
-      '💧',
-      'Next time it rains, you angle the gutters toward the well. By morning the shaft gleams with water — your first proper water source.',
-      'GOT IT',
-      refreshWellUi
-    );
+    showStructureBuiltBanner({
+      bonusKey:'well_hydrated',
+      title:'WELL FILLED!',
+      icon:'💧',
+      body:'Next time it rains, you angle the gutters toward the well. By morning the shaft gleams with water — your first proper water source.',
+      btnText:'GOT IT',
+      cb:refreshWellUi,
+    });
   }else{
     showToast('Rain fills the well. Water rings the bucket now.');
     refreshWellUi();
@@ -461,21 +463,27 @@ function placeWellBrick(event, instanceId){
   instanceId=instanceId||activeWellInstanceId;
   const cfg=getWellConfig(instanceId);
   if(!cfg||cfg.bucketless||cfg.freePlaced) return false;
-  if(cfg.bricks>=WELL_BRICKS_REQUIRED){
+  const current=cfg.bricks|0;
+  if(current>=WELL_BRICKS_REQUIRED){
     if(!cfg.bucketless) completeWell(instanceId);
     return false;
   }
-  if(itemCountBagAndStore('brick')<1){
+  const needed=WELL_BRICKS_REQUIRED-current;
+  const available=itemCountBagAndStore('brick');
+  const amount=Math.min(needed, available);
+  if(amount<1){
     showToast('You need bricks. Try the Rocky Clearing.');
     return false;
   }
-  if(!consumeOneFromBagOrStore('brick')){
+  const consumed=consumeUpToFromBagOrStore('brick', amount);
+  if(consumed<1){
     showToast('You need bricks. Try the Rocky Clearing.');
     return false;
   }
-  cfg.bricks++;
-  grantXP('architecture', getWellArchXpPerBrick(), null);
-  if(cfg.bricks>=WELL_BRICKS_REQUIRED) completeWell(instanceId);
+  cfg.bricks=current+consumed;
+  const willComplete=cfg.bricks>=WELL_BRICKS_REQUIRED;
+  grantXP('architecture', getWellArchXpPerBrick()*consumed, null, willComplete?{deferLevelUp:true}:null);
+  if(willComplete) completeWell(instanceId);
   else{
     if(typeof updateWellCells==='function') updateWellCells();
     if(currentScreen==='well-screen') renderWellScreen();
@@ -607,17 +615,18 @@ function renderWellScreen(){
     }else if(bricks>=WELL_BRICKS_REQUIRED){
       statusEl.textContent='Finishing the well…';
     }else{
-      statusEl.textContent='Tap the well site or use the button below to place bricks';
+      statusEl.textContent='Open menu to place bricks';
     }
     statusEl.classList.add('idle');
   }
   if(btnEl){
     if(stage==='building'){
       const done=cfg.bucketless||bricks>=WELL_BRICKS_REQUIRED;
+      const canAdd=!done&&itemCountBagAndStore('brick')>0;
       btnEl.hidden=false;
       btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
-        +'<button class="wb-btn once" style="flex:1" '+(done?'disabled':'')+' onclick="placeWellBrick(event)">'
-        +'🧱 PLACE A BRICK'
+        +'<button class="wb-btn once" style="flex:1" '+(done||!canAdd?'disabled':'')+' onclick="placeWellBrick(event)">'
+        +'🧱 ADD BRICKS'
         +'<span class="wb-btn-sub">'+bricks+'/'+WELL_BRICKS_REQUIRED+'</span>'
         +'</button></div></div>';
     }else if(stage==='hydrated'){

@@ -2,7 +2,7 @@
 'use strict';
 
 const WOODLANDS = [
-  { id:1,  key:'clearing',        name:'The Clearing',      unlockLevel:1,  recommendedLevel:1,  drops:[{log:'logs',pct:100}] },
+  { id:1,  key:'clearing',        name:'Lonely Tree',       unlockLevel:1,  recommendedLevel:1,  drops:[{log:'logs',pct:100}] },
   { id:2,  key:'ashwood_grove',   name:'Ashwood Grove',     unlockLevel:8,  recommendedLevel:8,  drops:[{log:'logs',pct:70},{log:'ashwood',pct:30}] },
   { id:3,  key:'old_coppice',     name:'The Old Coppice',   unlockLevel:15, recommendedLevel:15, drops:[{log:'logs',pct:40},{log:'ashwood',pct:45},{log:'teak',pct:15}] },
   { id:4,  key:'teak_run',        name:'Teak Run',          unlockLevel:22, recommendedLevel:22, drops:[{log:'logs',pct:20},{log:'ashwood',pct:30},{log:'teak',pct:50}] },
@@ -23,6 +23,14 @@ const PLOT_TILE_BASE = {
   well_hydrated:{ typeId:'well_hydrated', name:'Well', icon:'💧', behavior:'well', removable:true, category:'structure', archUnlockLevel:1, waterSource:true, desc:'A working water source — free after your first.' },
   fire_pit:    { typeId:'fire_pit',    name:'Fire Pit', icon:'🔥', behavior:'fire_pit', removable:true, category:'structure', archUnlockLevel:4, desc:'Build with 50 stone, 50 clay, and 50 bricks — free after your first.' },
   simple_kiln: { typeId:'simple_kiln', name:'Simple Kiln', icon:'🏺', behavior:'kiln', removable:true, category:'structure', archUnlockLevel:8, desc:'Build with 50 stone, 50 clay, and 50 bricks — smelt bricks and glass.' },
+  small_barn:           { typeId:'small_barn',           name:'Small Barn',           icon:'🏚️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:5, desc:'Raise the frame with 200 logs and 200 nails — free after your first.' },
+  small_barn_walls:     { typeId:'small_barn_walls',     name:'Small Barn (walls)',   icon:'🏚️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:5, desc:'Walls raised — add 50 slate and 50 nails for the roof.' },
+  small_barn_doorless:  { typeId:'small_barn_doorless',  name:'Small Barn (doorless)', icon:'🏚️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:5, desc:'Roof fitted — add 50 ashwood and 50 nails for the barn door.' },
+  small_barn_complete:  { typeId:'small_barn_complete',  name:'Small Barn',           icon:'🏚️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:5, desc:'A finished barn — free to place after your first.' },
+  medium_barn_complete: { typeId:'medium_barn_complete', name:'Medium Barn',          icon:'🏛️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:15, footprint:2, desc:'A larger barn spanning two tiles — free to place after your first upgrade.' },
+  large_barn_complete:  { typeId:'large_barn_complete',  name:'Large Barn',           icon:'🏛️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:35, footprint:2, desc:'Four livestock slots and a barn interior — free to place after your first large barn upgrade.' },
+  washing_line:          { typeId:'washing_line',          name:'Washing Line',          icon:'🧺', behavior:'washing_line', removable:true, category:'structure', archUnlockLevel:3, desc:'Raise with 20 logs, then 10 rope — dry grass, wheat, and hides with air.' },
+  improved_washing_line: { typeId:'improved_washing_line', name:'Washing Line', icon:'🧺', behavior:'washing_line', removable:true, category:'structure', archUnlockLevel:3, desc:'Raise with 20 logs, then 10 rope — dry grass, wheat, and hides with air.' },
   farm_plot:   { typeId:'farm_plot',   name:'Farming Plot', icon:'🌾', behavior:'farm', removable:true, category:'farming', desc:'Plant seeds and harvest crops over time.' },
 };
 

@@ -37,10 +37,7 @@ function resolveFirePitInstanceId(eventOrCell){
 }
 
 function forEachFirePitSlot(fn){
-  if(typeof forEachPlotOccupied!=='function') return;
-  forEachPlotOccupied((x,y,slot)=>{
-    if(getPlotTileDef(slot.typeId)?.behavior==='fire_pit') fn(x,y,slot);
-  });
+  if(typeof forEachPlotStructureSlot==='function') forEachPlotStructureSlot('fire_pit', fn);
 }
 
 function countFirePitsOnPlot(){
@@ -98,7 +95,7 @@ function unlockFirePits(){
 function migrateFirePit(){
   if(state.firePitUnlocked==null) state.firePitUnlocked=false;
   forEachFirePitSlot((x,y,slot)=>{
-    normalizeFirePitConfig(getPlotConfig(slot.instanceId));
+    normalizeFirePitConfig(getPlotConfig(slot.instanceId,'fire_pit',slot.typeId));
     const cfg=getFirePitConfig(slot.instanceId);
     if(getFirePitStage(cfg)==='complete') state.firePitUnlocked=true;
   });
@@ -129,7 +126,7 @@ function completeFirePit(instanceId){
   instanceId=instanceId||activeFirePitInstanceId;
   const cfg=getFirePitConfig(instanceId);
   if(!cfg) return;
-  const showBanner=!cfg.complete;
+  const showBanner=!state.firePitUnlocked;
   FIRE_PIT_MATERIALS.forEach(m=>{ cfg[m.countKey]=m.required; });
   cfg.complete=true;
   unlockFirePits();
@@ -140,15 +137,17 @@ function completeFirePit(instanceId){
     syncUI();
   };
   if(showBanner){
-    showFoundBanner(
-      'FIRE PIT BUILT!',
-      '🔥',
-      'The fire pit is ready — cook, burn fuel, or light torches.'+structureCompleteBonusBannerSuffix('fire_pit'),
-      'GOT IT',
-      refreshFirePitUi
-    );
+    showStructureBuiltBanner({
+      bonusKey:'fire_pit',
+      title:'FIRE PIT BUILT!',
+      icon:'🔥',
+      body:'The fire pit is ready — cook, burn fuel, or light torches.',
+      btnText:'GOT IT',
+      cb:refreshFirePitUi,
+    });
+  }else{
+    refreshFirePitUi();
   }
-  refreshFirePitUi();
 }
 
 function placeFirePitMaterial(event, instanceId, materialKey){
@@ -215,7 +214,7 @@ function renderFirePitMaterialGrid(materialKey, count){
   const mat=getFirePitMaterialDef(materialKey);
   if(!mat) return '';
   return '<div class="fire-pit-material-block">'
-    +'<div class="fire-pit-material-title">'+mat.icon+' '+mat.name+' · '+count+' / '+mat.required+'</div>'
+    +'<div class="fire-pit-material-title">'+formatRecipeMatTitle(mat.icon, mat.name, mat.required, count)+'</div>'
     +'<div class="well-brick-grid fire-pit-material-grid">'
     +Array.from({ length:mat.required }, (_,i)=>{
       const filled=i<count;
@@ -349,7 +348,7 @@ function renderFirePitBurnMatOption(kind, key, icon, name, stock, fireXp, select
   return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
     +'<span class="wb-mat-icon">'+icon+'</span><span class="wb-mat-info">'
     +'<span class="wb-mat-name">'+name+'</span>'
-    +'<span class="wb-mat-stock '+wbStockClass(stock)+'">'+formatAvailableCount(stock)+' • +'+fireXp+' Fire XP</span>'
+    +'<span class="wb-mat-stock '+wbStockClass(stock, 1)+'">'+formatStockRatio(stock, 1)+' • +'+fireXp+' Fire XP</span>'
     +'</span></div>';
 }
 
@@ -478,7 +477,7 @@ function renderFirePitBurnPanel(){
     el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(sel.total<1?' unavail':'')+'" onclick="toggleFirePitFuelPicker()">'
       +'<span class="wb-mat-icon">'+sel.icon+'</span>'
       +'<div class="wb-mat-pick-body">'
-      +'<span class="wb-mat-pick-avail '+wbStockClass(sel.total)+'">'+sel.name+' — '+formatAvailableCount(sel.total)+'</span>'
+      +'<span class="wb-mat-pick-avail wb-mat-pick-line '+wbStockClass(sel.total, 1)+'">'+formatRecipeMatLine(sel.name, 1, sel.total)+'</span>'
       +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">+'+sel.fireXp+' Fire XP</span>'
       +'</div><span class="wb-log-pick-chevron">▾</span></div>';
     return;
@@ -555,7 +554,7 @@ function renderFirePitLightPanel(){
     el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<TORCH_SIMPLE_LOG_COST?' unavail':'')+'" onclick="toggleFirePitLightLogPicker()">'
       +'<span class="wb-mat-icon">'+(logDef.icon||'🪵')+'</span>'
       +'<div class="wb-mat-pick-body">'
-      +'<span class="wb-mat-pick-avail '+wbStockClass(total)+'">'+(logDef.name||'Log')+' — '+formatAvailableCount(total)+'</span>'
+      +'<span class="wb-mat-pick-avail wb-mat-pick-line '+wbStockClass(total, TORCH_SIMPLE_LOG_COST)+'">'+formatRecipeMatLine(logDef.name||'Log', TORCH_SIMPLE_LOG_COST, total)+'</span>'
       +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">need '+TORCH_SIMPLE_LOG_COST+' • Fire Lv '+TORCH_FIRE_LEVEL_REQUIRED+(levelOk?' ✓':'')+'</span>'
       +'</div><span class="wb-log-pick-chevron">▾</span></div>';
   }else{
@@ -569,7 +568,7 @@ function renderFirePitLightPanel(){
       return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
         +'<span class="wb-mat-icon">'+(d.icon||'🪵')+'</span><span class="wb-mat-info">'
         +'<span class="wb-mat-name">'+d.name+'</span>'
-        +'<span class="wb-mat-stock '+wbStockClass(stock)+'">'+formatAvailableCount(stock)+' available</span>'
+        +'<span class="wb-mat-stock wb-mat-pick-line '+wbStockClass(stock, TORCH_SIMPLE_LOG_COST)+'">'+formatRecipeMatLine(d.name, TORCH_SIMPLE_LOG_COST, stock)+'</span>'
         +'</span></div>';
     }).join('');
   }
@@ -766,7 +765,7 @@ function renderFirePitBuildSection(cfg){
     gridsEl.innerHTML=FIRE_PIT_MATERIALS.map(m=>renderFirePitMaterialGrid(m.key, cfg?.[m.countKey]|0)).join('');
   }
   if(statusEl){
-    statusEl.textContent='Tap the site or use the buttons below to add materials';
+    statusEl.textContent='Use the buttons below to add materials';
     statusEl.classList.add('idle');
   }
   if(btnEl){

@@ -22,3 +22,51 @@ function waterXpForFishRelease(bodyType){
   const typeCfg=WATER_BODY_TYPES[bodyType]||WATER_BODY_TYPES.pond;
   return Math.floor(typeCfg.xpCatch*FISH_RELEASE_CATCH_XP_MULT);
 }
+
+/** Water affinity level required to place each water tile (1st at 1, 2nd at 5, …). */
+const WATER_PLOT_TILE_UNLOCK_LEVELS=[1, 5, 15, 25, 35];
+
+function getWaterSkillLevel(){
+  return Number(state.skills.water?.level)||1;
+}
+
+function getMaxWaterPlotTiles(){
+  const lvl=getWaterSkillLevel();
+  let max=0;
+  for(const req of WATER_PLOT_TILE_UNLOCK_LEVELS){
+    if(lvl>=req) max++;
+  }
+  return max;
+}
+
+function countPlacedWaterPlotTiles(){
+  let n=0;
+  if(typeof forEachPlotOccupied!=='function') return n;
+  forEachPlotOccupied((x,y,slot)=>{
+    if(getPlotTileDef(slot.typeId)?.behavior==='water') n++;
+  });
+  return n;
+}
+
+function getNextWaterPlotTileUnlockLevel(){
+  const lvl=getWaterSkillLevel();
+  for(const req of WATER_PLOT_TILE_UNLOCK_LEVELS){
+    if(lvl<req) return req;
+  }
+  return null;
+}
+
+function canPlaceAnotherWaterPlotTile(){
+  return countPlacedWaterPlotTiles()<getMaxWaterPlotTiles();
+}
+
+function waterPlotTileLimitMessage(){
+  const placed=countPlacedWaterPlotTiles();
+  const max=getMaxWaterPlotTiles();
+  const next=getNextWaterPlotTileUnlockLevel();
+  if(placed<max) return '';
+  if(next!=null){
+    return 'Water Lv '+next+' needed for another water tile ('+placed+'/'+max+').';
+  }
+  return 'Maximum water tiles on your land ('+max+').';
+}

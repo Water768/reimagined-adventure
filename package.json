@@ -1,0 +1,13 @@
+{
+  "name": "hearthstead",
+  "private": true,
+  "description": "Hearthstead browser game — tooling",
+  "scripts": {
+    "audit": "node scripts/audit.js",
+    "manifest:check": "node scripts/sync-html-scripts.js --check",
+    "manifest:sync": "node scripts/sync-html-scripts.js",
+    "styles:check": "node scripts/sync-html-styles.js --check",
+    "styles:sync": "node scripts/sync-html-styles.js",
+    "ci": "node scripts/sync-html-scripts.js --check && node scripts/sync-html-styles.js --check && node scripts/audit.js"
+  }
+}

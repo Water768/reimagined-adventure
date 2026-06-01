@@ -42,6 +42,13 @@ function resetTransientUiState(){
 }
 
 bootStep('loadGameState', loadGameState);
+bootStep('updateSaveButtonUI', ()=>{
+  if(typeof updateSaveButtonUI==='function') updateSaveButtonUI();
+});
+bootStep('migrateStructureCompleteBonuses', ()=>{
+  if(typeof migrateStructureCompleteBonuses==='function') migrateStructureCompleteBonuses();
+  if(typeof reconcileMissedStructureBonuses==='function') reconcileMissedStructureBonuses();
+});
 resetTransientUiState();
 bootStep('initPlotGrid', initPlotGrid);
 bootStep('initInteriorGrid', initInteriorGrid);
@@ -57,5 +64,9 @@ if(state.gameStarted){
   });
 }
 
-bootStep('syncUI', syncUI);
-window.addEventListener('beforeunload', saveGameState);
+bootStep('syncUI', syncUIFull);
+function onPageUnloadMaybeSave(){
+  if(typeof savePersistenceDisabled!=='undefined'&&savePersistenceDisabled) return;
+  saveGameState();
+}
+window.addEventListener('beforeunload', onPageUnloadMaybeSave);
