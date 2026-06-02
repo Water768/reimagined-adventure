@@ -5,8 +5,8 @@ const SHARD_CHANCE = 0.01;
 const SHARD_FOR_SKILL = {
   woodcut:'earth', foraging:'earth', fishing:'water', mining:'earth',
   carpentry:'earth', metalworking:'earth', cooking:'fire', crafting:'earth', architecture:'earth',
-  botany:'earth', husbandry:'earth', design:'air', exploration:'air',
-  knowledge:'air', magic:'magic', fire:'fire',
+  botany:'earth', husbandry:'earth', exploration:'air',
+  academia:'air', magic:'magic', fire:'fire',
 };
 const SHARD_META = {
   fire:  { icon:'🔥', name:'Fire Shard' },
@@ -70,6 +70,8 @@ const AXE_DEFS = [
   { tier:5, key:'axe_5',  icon:'🪓', name:'Axe5',         woodcutLevel:22, effectBlurb:AXE_EFFECT_BLURBS[5] },
   { tier:6, key:'axe_6',  icon:'🪓', name:'Axe6',         woodcutLevel:26, effectBlurb:AXE_EFFECT_BLURBS[6] },
   { tier:7, key:'axe_7',  icon:'🪓', name:'Axe7',         woodcutLevel:30, effectBlurb:AXE_EFFECT_BLURBS[7] },
+  { tier:8, key:INCINERATING_AXE_KEY, icon:'🪓', name:'Incinerating Axe', woodcutLevel:1,
+    effectBlurb:'40% chance to incinerate logs for triple Woodcutting XP, matching Fire XP, and fire shards.' },
 ];
 const AXE_BY_KEY = Object.fromEntries(AXE_DEFS.map(a=>[a.key,a]));
 
@@ -184,9 +186,74 @@ function axeDuplicateLogChance(tier){
   return 0.1*(Number(tier||0)+1);
 }
 
+/** Sum duplicate-log bonus % from axe + forestry journal chapter 1 (additive). */
+function getWoodcutDuplicateLogBonusPct(axeDef){
+  let pct=0;
+  const bonusAxe=typeof getToolStoreBonusAxeDef==='function'?getToolStoreBonusAxeDef():null;
+  const tier=(bonusAxe||axeDef)?.tier;
+  if(tier!=null) pct+=axeDuplicateLogChance(tier)*100;
+  if(typeof isForestryJournalChapterActive==='function'&&isForestryJournalChapterActive(1)){
+    pct+=FORESTRY_CH1_DOUBLE_LOG_PCT;
+  }
+  return pct;
+}
+
+/** Roll extra duplicate logs from additive bonus % (110% → 2 guaranteed + 10% for a 3rd). */
+function rollBonusDuplicateLogCount(bonusPct){
+  const pct=Math.max(0, Number(bonusPct)||0);
+  if(pct<=0) return 0;
+  if(pct<100) return Math.random()*100<pct?1:0;
+  let count=Math.floor(pct/100);
+  if(pct%100>0) count+=1;
+  if(pct%100>0&&Math.random()*100<(pct%100)) count+=1;
+  return count;
+}
+
+const FORESTRY_JOURNAL_ITEMS={
+  special_leaves:{ key:SPECIAL_LEAVES_ITEM_KEY, icon:'🍃', name:'Special Leaves' },
+};
+
+const WORKBENCH_TOOL_CRAFTS={
+  incinerating_axe:{
+    id:INCINERATING_AXE_KEY,
+    name:'Incinerating Axe',
+    icon:'🪓',
+    tier:'journal',
+    requiredCarpentryLevel:1,
+    stages:1,
+    baseFurnitureChance:85,
+    allowedWoods:'all',
+    skill:'carpentry',
+    nailsPerAttempt:0,
+    xpFail:2,
+    xpStage:20,
+    xpComplete:60,
+    completeLabel:'incinerating axe',
+    outputToolKey:INCINERATING_AXE_KEY,
+    extraInputs:[{ key:'logs', qty:5 }, { key:'copper', qty:2 }],
+    requireBookcaseChapter:{ bookId:FORESTRY_JOURNAL_BOOK_ID, chapter:4 },
+  },
+};
+
+function isWorkbenchToolRecipeUnlocked(recipe){
+  const req=recipe?.requireBookcaseChapter;
+  if(!req) return true;
+  return typeof isBookcaseChapterActive==='function'
+    &&isBookcaseChapterActive(req.bookId, req.chapter|0);
+}
+
+function isIncineratingAxeEquipped(){
+  if(typeof ensureToolStoreTools==='function') ensureToolStoreTools();
+  const key=state?.toolStoreTools?.activeAxe;
+  return key===INCINERATING_AXE_KEY
+    &&typeof getOwnedToolStoreAxeKeys==='function'
+    &&getOwnedToolStoreAxeKeys().includes(INCINERATING_AXE_KEY);
+}
+
 const EQUIPPABLE = Object.fromEntries([
   ['copper_armour',{ icon:'🛡️', name:'Copper Armour', tier:1, slot:'body' }],
   ['bronze_armour',{ icon:'🛡️', name:'Bronze Armour', tier:2, slot:'body' }],
+  ['slick_grip_waders',{ icon:'🥾', name:'Slick-Grip Waders', tier:0, slot:'legs' }],
 ]);
 
 const BAG_DEFS = [

@@ -343,7 +343,7 @@ function loomRecipeXpPreview(recipe){
   const opt=getLoomActiveInputOpt(recipe);
   const pct=loomSuccessPct(recipe, opt);
   const lvl=Number(state.skills.crafting?.level)||1;
-  return '<span class="wb-xp-line">Success: +'+recipe.xpSuccess+' Crafting • Fail: +'+recipe.xpFail+' Crafting</span>'
+  return '<span class="wb-xp-line">'+formatSkillXp(recipe.xpSuccess, 'Crafting')+' on success • '+formatSkillXp(recipe.xpFail, 'Crafting')+' on fail</span>'
     +'<span class="wb-xp-line">'+pct+'% success at Crafting Lvl '+lvl+'</span>';
 }
 
@@ -555,10 +555,14 @@ function doLoomWeaveAttempt(recipeKey){
       showToast('Could not weave that output.');
       return { ok:false };
     }
-    invAddDirect(out.key,out.icon,out.name,1,{ pickupBaseline:invBefore });
+    const outQty=Math.max(1, recipe.outputQty|0);
+    invAddDirect(out.key,out.icon,out.name,outQty,{ pickupBaseline:invBefore });
     grantXP('crafting',recipe.xpSuccess,null,{ deferSync:loomProcess.running, keepActivities:true });
     addActivityLog('loom-log',out.icon+' '+out.name+' woven! +'+recipe.xpSuccess+' Crafting','success');
-    if(!loomProcess.running) showToast(out.icon+' '+out.name+' woven!');
+    if(!loomProcess.running){
+      const outQty=Math.max(1, recipe.outputQty|0);
+      showToast(out.icon+' '+out.name+(outQty>1?' ×'+outQty:'')+' woven!');
+    }
   }else{
     const lost=rollLoomFailLoss(needQty);
     if(!consumeLoomMaterial(picked.key, lost)){
@@ -658,10 +662,7 @@ function renderLoomActivityButtons(){
   const block=recipe?loomRecipeBlockReason(recipe):null;
   if(status){
     if(loomProcess.running) status.textContent='Weaving…';
-    else{
-      const msg=loomRecipeBlockMessage(block);
-      status.textContent=msg||'Turn thread and fiber into fabric';
-    }
+    else status.textContent=loomRecipeBlockMessage(block)||'';
     status.classList.toggle('idle',!loomProcess.running);
   }
   if(loomProcess.running){

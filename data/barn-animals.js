@@ -4,6 +4,12 @@
 const BARN_SMALL_ANIMAL_SLOTS = 1;
 const BARN_MEDIUM_ANIMAL_SLOTS = 2;
 const BARN_LARGE_ANIMAL_SLOTS = 4;
+const BARN_SMALL_UTILITY_SLOTS = 1;
+const BARN_MEDIUM_UTILITY_SLOTS = 2;
+const BARN_LARGE_UTILITY_SLOTS = 4;
+const BARN_SMALL_HABITAT_SLOTS = 0;
+const BARN_MEDIUM_HABITAT_SLOTS = 1;
+const BARN_LARGE_HABITAT_SLOTS = 2;
 const BARN_STORAGE_CAP = 50;
 const BARN_LARGE_STORAGE_CAP = 400;
 
@@ -15,6 +21,20 @@ const BARN_ANIMAL_FOODS = {
   hay: { key: 'hay', icon: '🌾', name: 'Hay', unobtainable: true },
   mushrooms: { key: 'mushrooms', icon: '🍄', name: 'Mushrooms' },
 };
+
+/** Per trough unit: max of each food type storable in the barn trough. */
+const BARN_TROUGH_FOOD_CAP_PER_UNIT = { copper: 10, bronze: 20, iron: 30 };
+
+const BARN_TROUGH_PLACEABLE_TIERS = {
+  copper_trough: 'copper',
+  bronze_trough: 'bronze',
+  iron_trough: 'iron',
+};
+
+const BARN_TROUGH_FOOD_KEYS = Object.keys(BARN_ANIMAL_FOODS);
+
+/** Display order for expanded trough preview (progression: wheat → mushrooms → hay). */
+const BARN_TROUGH_FOOD_LEVEL_ORDER = ['wheat', 'mushrooms', 'hay'];
 
 const BARN_ANIMAL_PRODUCE = {
   egg: { key: 'egg', icon: '🥚', name: 'Egg' },
@@ -144,11 +164,9 @@ function getBarnSizeTier(cfg) {
   return BARN_SIZE_TIER.small;
 }
 
-function isBarnAnimalAllowedAtBarn(animalKey, cfg) {
-  const def = getBarnAnimalDef(animalKey);
-  if (!def) return false;
-  const required = BARN_SIZE_TIER[def.minBarnSize] || BARN_SIZE_TIER.small;
-  return getBarnSizeTier(cfg) >= required;
+/** Any unlocked animal may occupy any animal pen — barn size only limits slot count. */
+function isBarnAnimalAllowedAtBarn(animalKey, _cfg) {
+  return !!getBarnAnimalDef(animalKey);
 }
 
 function husbandryXpPerBarnCollect(animalKey) {
@@ -239,8 +257,109 @@ function barnAnimalFeedSeconds(animalKey) {
   return def ? Math.round(def.feedMs / 1000) : 0;
 }
 
+function barnCountTroughUnitsInInterior(barnInterior) {
+  const counts = { copper: 0, bronze: 0, iron: 0 };
+  const placements = barnInterior?.customPlacements;
+  if (!placements) return counts;
+  Object.values(placements).forEach((key) => {
+    const tier = BARN_TROUGH_PLACEABLE_TIERS[key];
+    if (tier) counts[tier] = (counts[tier] | 0) + 1;
+  });
+  return counts;
+}
+
+function barnTroughFoodCapPerType(barnInterior) {
+  const counts = barnCountTroughUnitsInInterior(barnInterior);
+  let cap = 0;
+  Object.keys(BARN_TROUGH_FOOD_CAP_PER_UNIT).forEach((tier) => {
+    cap += (counts[tier] | 0) * (BARN_TROUGH_FOOD_CAP_PER_UNIT[tier] | 0);
+  });
+  const caps = {};
+  BARN_TROUGH_FOOD_KEYS.forEach((fk) => {
+    caps[fk] = cap;
+  });
+  return caps;
+}
+
+function barnTroughCapacitySummary(barnInterior) {
+  const counts = barnCountTroughUnitsInInterior(barnInterior);
+  const parts = [];
+  if (counts.copper) parts.push(counts.copper + '× copper (' + BARN_TROUGH_FOOD_CAP_PER_UNIT.copper + ' each)');
+  if (counts.bronze) parts.push(counts.bronze + '× bronze (' + BARN_TROUGH_FOOD_CAP_PER_UNIT.bronze + ' each)');
+  if (counts.iron) parts.push(counts.iron + '× iron (' + BARN_TROUGH_FOOD_CAP_PER_UNIT.iron + ' each)');
+  const perType = barnTroughFoodCapPerType(barnInterior);
+  const cap = perType[BARN_TROUGH_FOOD_KEYS[0]] | 0;
+  return { counts, perTypeCap: cap, parts, hasTroughs: cap > 0 };
+}
+
+/** Shortfall only, e.g. -1 wheat (omit when trough has enough). */
+function barnFormatTroughFoodDeficitHtml(stock, need, label) {
+  const s = Math.max(0, stock | 0);
+  const n = Math.max(1, need | 0);
+  if (s >= n) return '';
+  const deficit = n - s;
+  return '<span class="barn-trough-food-deficit">-' + deficit + ' ' + label + '</span>';
+}
+
+/** Per-feed yield labels (not barn storage totals). */
+function barnAnimalProduceRateParts(animalKey) {
+  if (animalKey === 'chicken') return ['+1 egg', '+1 feather'];
+  if (animalKey === 'duck') return ['+5 feather', '+50% egg'];
+  if (animalKey === 'badger') return ['+1 herbs', '20% earth shard'];
+  if (animalKey === 'sheep') return ['+1 wool'];
+  if (animalKey === 'alpaca') return ['+2 wool'];
+  if (animalKey === 'cow') return ['+1 milk', '10% hide'];
+  return [];
+}
+
+function barnAnimalProduceRatePartsHtml(animalKey) {
+  return barnAnimalProduceRateParts(animalKey).map((part) =>
+    '<span class="barn-trough-produce-up">' + part + '</span>');
+}
+
+function barnTroughFoodDef(foodKey) {
+  return BARN_ANIMAL_FOODS[foodKey] || { key: foodKey, icon: '🌾', name: foodKey };
+}
+
+/** One status line per animal type (stacked when multiple pens share a type). */
+function barnAnimalTroughStatusLine(animalKey, penCount, cfg, troughStock) {
+  const def = getBarnAnimalDef(animalKey);
+  if (!def || penCount < 1) return '';
+  const food = getBarnAnimalPrimaryFood(def);
+  const need = (food.amount | 0) * penCount;
+  const stock = troughStock?.[food.key] | 0;
+  const label = food.label || food.key;
+  const parts = [];
+  const deficitHtml = barnFormatTroughFoodDeficitHtml(stock, need, label);
+  if (deficitHtml) parts.push(deficitHtml);
+  parts.push(...barnAnimalProduceRatePartsHtml(animalKey));
+  const secs = barnAnimalFeedSeconds(animalKey);
+  const name = def.name + (penCount > 1 ? ' ×' + penCount : '');
+  return name + ': ' + parts.join(', ') + (secs ? ' <span class="barn-trough-feed-secs">(' + secs + 's)</span>' : '');
+}
+
+function barnGroupedAnimalTroughLines(cfg, troughStock) {
+  if (!cfg?.animalSlots) return [];
+  const groups = {};
+  cfg.animalSlots.forEach((slot) => {
+    if (!slot?.type) return;
+    groups[slot.type] = (groups[slot.type] | 0) + 1;
+  });
+  return BARN_ANIMAL_ORDER.filter((k) => groups[k])
+    .map((k) => barnAnimalTroughStatusLine(k, groups[k], cfg, troughStock));
+}
+
+/** Barn loot keys → inventory item defs (e.g. stored `eggs` → item `egg`). */
+const BARN_STORAGE_PRODUCE_INV_KEYS = { eggs: 'egg' };
+
 function barnProduceDef(produceKey) {
-  return BARN_ANIMAL_PRODUCE[produceKey] || null;
+  const invKey = BARN_STORAGE_PRODUCE_INV_KEYS[produceKey] || produceKey;
+  return BARN_ANIMAL_PRODUCE[invKey] || null;
+}
+
+function barnInventoryKeyForStoredProduce(produceKey) {
+  const def = barnProduceDef(produceKey);
+  return def?.key || produceKey;
 }
 
 function barnStoredLootCount(loot, produceKey) {

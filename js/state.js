@@ -9,6 +9,8 @@ function getDefaultState(){
     inventory:{},
     equipped:null,
     equippedBag:null,
+    equippedFeatherPocket:null,
+    featherPocketCount:0,
     toolStoreTools:{ axes:[], activeAxe:null, pickaxes:[], activePickaxe:null, rods:[], activeRod:null, nets:[], activeNet:null, basket:null },
     skills:{
       woodcut:{xp:0,level:1,xpToNext:100},
@@ -22,9 +24,8 @@ function getDefaultState(){
       architecture:{xp:0,level:1,xpToNext:100},
       botany:{xp:0,level:1,xpToNext:100},
       husbandry:{xp:0,level:1,xpToNext:100},
-      design:{xp:0,level:1,xpToNext:100},
       exploration:{xp:0,level:1,xpToNext:100},
-      knowledge:{xp:0,level:1,xpToNext:100},
+      academia:{xp:0,level:1,xpToNext:100},
       magic:{xp:0,level:1,xpToNext:100},
       air:{xp:0,level:1,xpToNext:100},
       earth:{xp:0,level:1,xpToNext:100},
@@ -39,12 +40,16 @@ function getDefaultState(){
     fireplaceQuickAction:'cook',
     firePitQuickAction:'cook',
     kilnQuickAction:'recipe',
+    apothecaryQuickAction:'identify',
     plotLayout:null, plot:{ cells:null, editMode:false, panX:0, panY:0, unlocked:null, featureUnlocks:null, firstUnlockXpAwarded:null, addMenuShowLocked:false }, plotConfigs:{},
     interior:{ cells:null, buildMode:false, panX:0, panY:0 },
     interiorLayout:null, interiorPanX:0, interiorPanY:0,
-    pockets:{ fire:0, water:0, earth:0, air:0, magic:0 },
+    pockets:{ fire:0, water:0, earth:0, air:0, magic:0, glistening:0 },
     pets:[],
     craftProgress:{},
+    studyDesk:{ books:{}, maps:{} },
+    bookcase:{ activeChapters:{} },
+    woodcutAuxiliary:null,
     lastWorkbenchRecipe:'chair',
     equippedPetIds:[],
     _seenHut:false, _seenPond:false, _seenShard:false, _seenMagicShard:false,
@@ -52,6 +57,10 @@ function getDefaultState(){
     exploreStaminaRolls:{},
     exploreHealingRolls:{},
     exploreTorchRolls:{},
+    exploreWhisperWoodsRolls:{},
+    exploreSunkenShallowsRolls:{},
+    coastalDocksUnlocked:false,
+    coastalDocksTier:0,
     wellUnlocked:false,
     wellFinishedUnlocked:false,
     wellHydratedUnlocked:false,
@@ -67,6 +76,8 @@ function getDefaultState(){
     washingLineFrameUnlocked:false,
     washingLineUnlocked:false,
     washingLineImprovedUnlocked:false,
+    whisperCampUnlocked:false,
+    whisperCampTier:0,
     kilnLastAction:null,
     kilnLastMetalTier:'copper',
     kilnMetalRecipeByTier:{},
@@ -76,6 +87,9 @@ function getDefaultState(){
     _structureCompleteBonusMigrated:false,
     _structureStageBonusFlagsMigrated:false,
     _structureBonusXpGranted:{},
+    fawnComfort:0,
+    fawnFeedCooldownUntil:0,
+    mossyBarnBlueprintsUnlocked:false,
     _saveVersion:0,
   };
 }
@@ -172,7 +186,7 @@ function migrateItemKeys(){
     mergeLegacyStackKeyAliases(state.inventory);
     mergeLegacyStackKeyAliases(state.storage);
   }
-  const renames=[['mackerel','raw_mackerel'],['rock','stone'],['flint','brick'],['desk','apothecary_table']];
+  const renames=[['mackerel','raw_mackerel'],['rock','stone'],['flint','brick'],['desk','apothecary_table'],['table','study_desk'],['bookshelf','bookcase'],['hardwood_chair','crafting_desk'],['waterproof_mortar','waterproof_paste']];
   renames.forEach(([oldKey,newKey])=>{
     const invC=stackCount(state.inventory, oldKey);
     if(invC>0){
@@ -555,6 +569,24 @@ function migrateToolStoreRodArray(){
   state._rodToolStoreArrayMigrated=true;
 }
 
+function migrateKnowledgeToAcademia(){
+  if(state._knowledgeToAcademiaMigrated) return;
+  if(state.skills?.knowledge){
+    if(!state.skills.academia) state.skills.academia={...state.skills.knowledge};
+    else{
+      const k=state.skills.knowledge;
+      const a=state.skills.academia;
+      if((k.level||1)>(a.level||1)||((k.level||1)===(a.level||1)&&(k.xp||0)>(a.xp||0))){
+        a.level=k.level;
+        a.xp=k.xp;
+        a.xpToNext=k.xpToNext;
+      }
+    }
+    delete state.skills.knowledge;
+  }
+  state._knowledgeToAcademiaMigrated=true;
+}
+
 function migrateTailoringToCrafting(){
   if(state._tailoringToCraftingMigrated) return;
   if(state.skills?.tailoring){
@@ -829,6 +861,18 @@ function wonkyLoomInStock(){
   return itemCountBagAndStore(WONKY_LOOM_FURNITURE_KEY)>0;
 }
 
+function studyDeskInStock(){
+  return itemCountBagAndStore(STUDY_DESK_FURNITURE_KEY)>0;
+}
+
+function bookcaseInStock(){
+  return itemCountBagAndStore(BOOKCASE_FURNITURE_KEY)>0;
+}
+
+function craftingDeskInStock(){
+  return itemCountBagAndStore(CRAFTING_DESK_FURNITURE_KEY)>0;
+}
+
 function returnOneToBagOrStore(key, icon, name){
   if(invTotal()<getInvCap()){
     invAddDirect(key, icon, name, 1);
@@ -1012,7 +1056,13 @@ function canStoreSpinResult(recipe){
   return invTotal()<getInvCap();
 }
 
+function ensurePocketsState(){
+  if(!state.pockets) state.pockets={ fire:0, water:0, earth:0, air:0, magic:0, glistening:0 };
+  if(state.pockets.glistening==null) state.pockets.glistening=0;
+}
+
 function tryShardDrop(skill){
+  ensurePocketsState();
   const elem=SHARD_FOR_SKILL[skill];
   if(!elem||Math.random()>=SHARD_CHANCE) return;
   state.pockets[elem]=(state.pockets[elem]||0)+1;
@@ -1027,6 +1077,7 @@ function tryShardDrop(skill){
 }
 
 function tryMagicShardDrop(){
+  ensurePocketsState();
   if(Math.random()>=MAGIC_SHARD_CHANCE) return;
   state.pockets.magic=(state.pockets.magic||0)+1;
   const m=SHARD_META.magic;
@@ -1072,12 +1123,13 @@ const fish={ running:false, timer:null, pondInstanceId:null, releasing:false, re
 const gather={ running:false, timer:null, instanceId:null, itemsThisSession:0 };
 const wc={ treeInstanceId:null };
 const mine={ running:false, timer:null, instanceId:null, stacks:0 };
-const explore={ instanceId:null, tier:'short', focusFishId:null, focusMedicineKey:null, eitherChoice:null, reqSubmenu:null, running:false };
+const explore={ instanceId:null, plotX:null, plotY:null, destinationKey:'cave', tier:'short', focusFishId:null, focusMedicineKey:null, eitherChoice:null, reqSubmenu:null, running:false };
 const ACTIVITY_MENU_SHOW_MS=3000;
 const plotActivityMenuTimers={};
 const cook={ running:false, timer:null, recipeKey:'goldfish' };
 const spin={ running:false, timer:null, recipeKey:'twisted_grass' };
 const apothProcess={ running:false, timer:null };
+const craftingDeskProcess={ running:false, timer:null };
 const loomProcess={ running:false, timer:null };
 const kilnProcess={ running:false, timer:null };
 const activity={ type:null };

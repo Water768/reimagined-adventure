@@ -231,8 +231,6 @@ let firePitLightSelectedLog='logs';
 let firePitUserPickedBurnFuel=false;
 let firePitUserPickedLightLog=false;
 let firePitFuelPickerOpen=false;
-let firePitLogSubmenuOpen=false;
-let firePitFurnSubmenuOpen=false;
 let firePitLightLogPickerOpen=false;
 let firePitCookPickerOpen=false;
 
@@ -264,8 +262,6 @@ function setFirePitTab(tab){
   if(tab==='logs'||tab==='furniture') tab='burn';
   firePitTab=tab;
   firePitFuelPickerOpen=false;
-  firePitLogSubmenuOpen=false;
-  firePitFurnSubmenuOpen=false;
   firePitLightLogPickerOpen=false;
   renderFirePitScreen();
 }
@@ -341,35 +337,20 @@ function listAllBurnableFirePitFurnitureTypes(){
   return out.sort((a,b)=>a.name.localeCompare(b.name));
 }
 
-function renderFirePitBurnMatOption(kind, key, icon, name, stock, fireXp, selected){
+function renderFirePitBurnFuelOption(kind, key, icon, name, stock, sel){
+  const selected=sel.kind===kind&&sel.key===key;
   const selCls=selected?' selected':'';
   const unavailCls=stock<1?' unavail':'';
-  const onclick=stock<1?'':' onclick="selectFirePitBurnFuel(\''+kind+'\',\''+key+'\')"';
+  const onclick=stock<1?'':(' onclick="'+(selected?'toggleFirePitFuelPicker()':'selectFirePitBurnFuel(\''+kind+'\',\''+key+'\')')+'"');
   return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
     +'<span class="wb-mat-icon">'+icon+'</span><span class="wb-mat-info">'
-    +'<span class="wb-mat-name">'+name+'</span>'
-    +'<span class="wb-mat-stock '+wbStockClass(stock, 1)+'">'+formatStockRatio(stock, 1)+' • +'+fireXp+' Fire XP</span>'
+    +'<span class="plot-add-item-title-row"><span class="plot-add-item-title">'+name+'</span></span>'
+    +'<span class="wb-mat-stock wb-mat-pick-line '+wbStockClass(stock, 1)+'">'+formatRecipeMatLine(name, 1, stock)+'</span>'
     +'</span></div>';
 }
 
 function toggleFirePitFuelPicker(){
   firePitFuelPickerOpen=!firePitFuelPickerOpen;
-  if(!firePitFuelPickerOpen){
-    firePitLogSubmenuOpen=false;
-    firePitFurnSubmenuOpen=false;
-  }
-  renderFirePitBurnPanel();
-}
-
-function toggleFirePitLogSubmenu(){
-  firePitLogSubmenuOpen=!firePitLogSubmenuOpen;
-  if(firePitLogSubmenuOpen) firePitFurnSubmenuOpen=false;
-  renderFirePitBurnPanel();
-}
-
-function toggleFirePitFurnSubmenu(){
-  firePitFurnSubmenuOpen=!firePitFurnSubmenuOpen;
-  if(firePitFurnSubmenuOpen) firePitLogSubmenuOpen=false;
   renderFirePitBurnPanel();
 }
 
@@ -383,8 +364,6 @@ function selectFirePitBurnFuel(kind, key){
   }
   firePitUserPickedBurnFuel=true;
   firePitFuelPickerOpen=false;
-  firePitLogSubmenuOpen=false;
-  firePitFurnSubmenuOpen=false;
   renderFirePitScreen();
 }
 
@@ -468,77 +447,57 @@ function renderFirePitCookPanel(){
   renderCookXpPreview(document.getElementById('fpc-xp-preview'), recipe);
 }
 
+function renderFirePitBurnXpPreview(sel){
+  const xpEl=document.getElementById('fpb-xp-preview');
+  if(!xpEl) return;
+  xpEl.innerHTML=sel&&sel.fireXp>0
+    ?('<span class="wb-xp-line">'+formatSkillXp(sel.fireXp, 'Fire')+'</span>')
+    :'';
+}
+
 function renderFirePitBurnPanel(){
   const el=document.getElementById('fpb-fuel-list');
   if(!el) return;
   const sel=getFirePitBurnSelection();
+  const canBurn=sel.total>0;
 
   if(!firePitFuelPickerOpen){
-    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(sel.total<1?' unavail':'')+'" onclick="toggleFirePitFuelPicker()">'
+    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(canBurn?' ready':' unavail')+'" onclick="toggleFirePitFuelPicker()">'
       +'<span class="wb-mat-icon">'+sel.icon+'</span>'
       +'<div class="wb-mat-pick-body">'
       +'<span class="wb-mat-pick-avail wb-mat-pick-line '+wbStockClass(sel.total, 1)+'">'+formatRecipeMatLine(sel.name, 1, sel.total)+'</span>'
-      +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">+'+sel.fireXp+' Fire XP</span>'
       +'</div><span class="wb-log-pick-chevron">▾</span></div>';
+    renderFirePitBurnXpPreview(sel);
     return;
   }
 
   let html='';
-  const ownedLogs=LOG_TIER_ORDER.filter(k=>logTypeCount(k)>0).map(key=>{
+  const logRows=LOG_TIER_ORDER.map(key=>{
     const d=LOG_TYPES[key]||LOG_DEFS[key];
-    return { kind:'log', key, icon:d?.icon||'🪵', name:d?.name||key, stock:logTypeCount(key), fireXp:firePitFireXpForLog(key) };
-  });
-  const ownedFurn=listBurnableFirePitFurniture().map(f=>({
-    kind:'furniture', key:f.key, icon:f.icon, name:f.name, stock:f.count, fireXp:firePitFireXpForFurniture(f.key),
-  }));
-  const quickOptions=[...ownedLogs,...ownedFurn];
+    if(!d) return '';
+    return renderFirePitBurnFuelOption('log', key, d.icon||'🪵', d.name, logTypeCount(key), sel);
+  }).join('');
+  if(logRows) html+='<div class="sw-tier-label">LOGS</div>'+logRows;
 
-  if(quickOptions.length){
-    html+='<div class="store-items-title" style="margin:0 0 6px;font-size:10px;opacity:0.75">AVAILABLE</div>';
-    html+=quickOptions.map(opt=>renderFirePitBurnMatOption(
-      opt.kind, opt.key, opt.icon, opt.name, opt.stock, opt.fireXp,
-      sel.kind===opt.kind&&sel.key===opt.key
-    )).join('');
-  }
-
-  html+='<div class="store-items-title" style="margin:10px 0 6px;font-size:10px;opacity:0.75">BROWSE</div>';
-  html+='<div class="wb-log-pick wb-log-pick-collapsed" onclick="toggleFirePitLogSubmenu()">'
-    +'<span class="wb-mat-icon">🪵</span>'
-    +'<div class="wb-mat-pick-body">'
-    +'<span class="wb-mat-pick-avail">Logs</span>'
-    +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">All log types</span>'
-    +'</div><span class="wb-log-pick-chevron">'+(firePitLogSubmenuOpen?'▴':'▾')+'</span></div>';
-  if(firePitLogSubmenuOpen){
-    html+=LOG_TIER_ORDER.map(key=>{
-      const d=LOG_TYPES[key]||LOG_DEFS[key];
-      if(!d) return '';
-      const stock=logTypeCount(key);
-      return renderFirePitBurnMatOption(
-        'log', key, d.icon||'🪵', d.name, stock, firePitFireXpForLog(key),
-        sel.kind==='log'&&sel.key===key
-      );
-    }).join('');
-  }
-
-  html+='<div class="wb-log-pick wb-log-pick-collapsed" style="margin-top:6px" onclick="toggleFirePitFurnSubmenu()">'
-    +'<span class="wb-mat-icon">🪑</span>'
-    +'<div class="wb-mat-pick-body">'
-    +'<span class="wb-mat-pick-avail">Furniture</span>'
-    +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">All crafted furniture</span>'
-    +'</div><span class="wb-log-pick-chevron">'+(firePitFurnSubmenuOpen?'▴':'▾')+'</span></div>';
-  if(firePitFurnSubmenuOpen){
-    const allFurn=listAllBurnableFirePitFurnitureTypes();
-    if(!allFurn.length){
-      html+='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:4px 0">No burnable furniture types.</div>';
-    }else{
-      html+=allFurn.map(f=>renderFirePitBurnMatOption(
-        'furniture', f.key, f.icon, f.name, f.count, firePitFireXpForFurniture(f.key),
-        sel.kind==='furniture'&&sel.key===f.key
-      )).join('');
-    }
+  const furn=listAllBurnableFirePitFurnitureTypes();
+  const furnRows=furn.map(f=>renderFirePitBurnFuelOption(
+    'furniture', f.key, f.icon, f.name, f.count, sel
+  )).join('');
+  if(furnRows) html+='<div class="sw-tier-label">FURNITURE</div>'+furnRows;
+  if(!html){
+    html='<div class="store-line" style="color:rgba(200,169,110,0.45);padding:4px 0">No fuel in bag or storage.</div>';
   }
 
   el.innerHTML=html;
+  renderFirePitBurnXpPreview(sel);
+}
+
+function renderFirePitLightReqPreview(fireLevel){
+  const el=document.getElementById('fpl-xp-preview');
+  if(!el) return;
+  el.innerHTML=fireLevel<TORCH_FIRE_LEVEL_REQUIRED
+    ?'<span class="wb-xp-line">Fire Lv '+TORCH_FIRE_LEVEL_REQUIRED+' required</span>'
+    :'';
 }
 
 function renderFirePitLightPanel(){
@@ -549,29 +508,42 @@ function renderFirePitLightPanel(){
   const logDef=LOG_TYPES[logKey]||LOG_DEFS[logKey]||LOG_DEFS.logs;
   const total=itemCountBagAndStore(logKey);
   const fireLevel=getFireSkillLevel();
-  const levelOk=fireLevel>=TORCH_FIRE_LEVEL_REQUIRED;
+  const torchDef=getSimpleTorchDef();
+  const locked=fireLevel<TORCH_FIRE_LEVEL_REQUIRED;
+  const lvlBadge=typeof plotAddLevelBadge==='function'
+    ?plotAddLevelBadge('fire', fireLevel, TORCH_FIRE_LEVEL_REQUIRED, TORCH_FIRE_LEVEL_REQUIRED)
+    :'';
+
   if(!firePitLightLogPickerOpen){
-    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+(total<TORCH_SIMPLE_LOG_COST?' unavail':'')+'" onclick="toggleFirePitLightLogPicker()">'
+    el.innerHTML='<div class="wb-log-pick wb-log-pick-collapsed'+((locked||total<TORCH_SIMPLE_LOG_COST)?' unavail':' ready')+'" onclick="toggleFirePitLightLogPicker()">'
       +'<span class="wb-mat-icon">'+(logDef.icon||'🪵')+'</span>'
       +'<div class="wb-mat-pick-body">'
       +'<span class="wb-mat-pick-avail wb-mat-pick-line '+wbStockClass(total, TORCH_SIMPLE_LOG_COST)+'">'+formatRecipeMatLine(logDef.name||'Log', TORCH_SIMPLE_LOG_COST, total)+'</span>'
-      +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">need '+TORCH_SIMPLE_LOG_COST+' • Fire Lv '+TORCH_FIRE_LEVEL_REQUIRED+(levelOk?' ✓':'')+'</span>'
+      +wbMatSuccessLineHtml((logDef.icon||'🪵')+' → '+torchDef.icon+' '+torchDef.name)
       +'</div><span class="wb-log-pick-chevron">▾</span></div>';
-  }else{
-    el.innerHTML=getSimpleTierLogKeys().map(key=>{
-      const d=LOG_TYPES[key]||LOG_DEFS[key];
-      if(!d) return '';
-      const stock=itemCountBagAndStore(key);
-      const selCls=firePitLightSelectedLog===key?' selected':'';
-      const unavailCls=stock<TORCH_SIMPLE_LOG_COST?' unavail':'';
-      const onclick=stock<TORCH_SIMPLE_LOG_COST?'':(' onclick="'+(firePitLightSelectedLog===key?'toggleFirePitLightLogPicker()':'selectFirePitLightLog(\''+key+'\')')+'"');
-      return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
-        +'<span class="wb-mat-icon">'+(d.icon||'🪵')+'</span><span class="wb-mat-info">'
-        +'<span class="wb-mat-name">'+d.name+'</span>'
-        +'<span class="wb-mat-stock wb-mat-pick-line '+wbStockClass(stock, TORCH_SIMPLE_LOG_COST)+'">'+formatRecipeMatLine(d.name, TORCH_SIMPLE_LOG_COST, stock)+'</span>'
-        +'</span></div>';
-    }).join('');
+    renderFirePitLightReqPreview(fireLevel);
+    return;
   }
+
+  el.innerHTML=getSimpleTierLogKeys().map(key=>{
+    const d=LOG_TYPES[key]||LOG_DEFS[key];
+    if(!d) return '';
+    const stock=itemCountBagAndStore(key);
+    const selected=firePitLightSelectedLog===key;
+    const selCls=selected?' selected':'';
+    const unavailCls=locked||stock<TORCH_SIMPLE_LOG_COST?' unavail':'';
+    const onclick=locked?'':(' onclick="'+(selected?'toggleFirePitLightLogPicker()':'selectFirePitLightLog(\''+key+'\')')+'"');
+    const desc=locked
+      ?'Need Fire Lv '+TORCH_FIRE_LEVEL_REQUIRED
+      :('<span class="wb-mat-stock wb-mat-pick-line '+wbStockClass(stock, TORCH_SIMPLE_LOG_COST)+'">'+formatRecipeMatLine(d.name, TORCH_SIMPLE_LOG_COST, stock)+'</span>'
+        +wbMatSuccessLineHtml(torchDef.icon+' '+torchDef.name));
+    return '<div class="wb-mat-option'+selCls+unavailCls+'"'+onclick+'>'
+      +'<span class="wb-mat-icon">'+(d.icon||'🪵')+'</span><span class="wb-mat-info">'
+      +plotAddItemTitleRow(d.name, lvlBadge)
+      +'<span class="wb-mat-stock">'+desc+'</span>'
+      +'</span></div>';
+  }).join('');
+  renderFirePitLightReqPreview(fireLevel);
 }
 
 function lightSimpleTorch(){
@@ -609,7 +581,7 @@ function renderFirePitActivityButtons(){
   if(firePitTab==='cook'){
     const recipe=COOKING_RECIPES[cook.recipeKey]||COOKING_RECIPES.goldfish;
     if(statusEl){
-      statusEl.textContent=cook.running?'Cooking on the open fire…':'Cook raw fish over the fire pit';
+      statusEl.textContent=cook.running?'Cooking on the open fire…':'';
       statusEl.classList.toggle('idle',!cook.running);
     }
     if(cook.running){
@@ -637,16 +609,20 @@ function renderFirePitActivityButtons(){
   }
   if(firePitTab==='burn'){
     const sel=getFirePitBurnSelection();
+    const can=sel.total>0;
     if(statusEl){
-      statusEl.textContent='Choose fuel, then feed the fire';
+      statusEl.textContent=can?'':'';
       statusEl.classList.add('idle');
     }
-    const burnLabel=sel.kind==='log'?'THROW LOG ON FIRE':'THROW FURNITURE ON FIRE';
-    btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
-      +'<button class="wb-btn once" style="flex:1" '+(sel.total<1?'disabled':'')+' onclick="burnSelectedFuelOnFirePit()">'
-      +sel.icon+' '+burnLabel
-      +'<span class="wb-btn-sub">+'+sel.fireXp+' Fire XP</span></button>'
-      +'</div></div>';
+    const onceLabel=sel.kind==='log'?'1 BURN LOG':'1 BURN FURNITURE';
+    renderOnceContinuousButtons({
+      btnEl,
+      running:false,
+      can,
+      onceLabel,
+      onceOnclick:'burnSelectedFuelOnFirePit()',
+      noticeHtml:!can?'<div class="wb-cost-notice">Need fuel in bag or storage.</div>':'',
+    });
     return;
   }
   if(firePitTab==='light'){
@@ -657,17 +633,24 @@ function renderFirePitActivityButtons(){
     const fireLevel=getFireSkillLevel();
     const canLight=fireLevel>=TORCH_FIRE_LEVEL_REQUIRED&&total>=TORCH_SIMPLE_LOG_COST;
     const torchDef=getSimpleTorchDef();
+    let notice='';
+    if(fireLevel<TORCH_FIRE_LEVEL_REQUIRED){
+      notice='<div class="wb-cost-notice">Reach Fire Lv '+TORCH_FIRE_LEVEL_REQUIRED+' to light torches.</div>';
+    }else if(total<TORCH_SIMPLE_LOG_COST){
+      notice='<div class="wb-cost-notice">Need '+TORCH_SIMPLE_LOG_COST+' '+((logDef?.name||'logs').toLowerCase())+'s.</div>';
+    }
     if(statusEl){
-      statusEl.textContent=fireLevel<TORCH_FIRE_LEVEL_REQUIRED
-        ?'Reach Fire Lv '+TORCH_FIRE_LEVEL_REQUIRED+' to light torches'
-        :'Wrap logs in cloth and flame — pack a cave torch';
+      statusEl.textContent='';
       statusEl.classList.add('idle');
     }
-    btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
-      +'<button class="wb-btn once" style="flex:1" '+(!canLight?'disabled':'')+' onclick="lightSimpleTorch()">'
-      +torchDef.icon+' LIGHT SIMPLE TORCH'
-      +'<span class="wb-btn-sub">'+TORCH_SIMPLE_LOG_COST+' '+(logDef.name||'logs').toLowerCase()+'s → '+torchDef.name+'</span></button>'
-      +'</div></div>';
+    renderOnceContinuousButtons({
+      btnEl,
+      running:false,
+      can:canLight,
+      onceLabel:'1 LIGHT TORCH',
+      onceOnclick:'lightSimpleTorch()',
+      noticeHtml:notice,
+    });
     return;
   }
 }

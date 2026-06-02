@@ -91,6 +91,9 @@ function flushActivityDirty() {
   document.querySelectorAll('.int-cell[data-int-key="apothecary_table"]').forEach((el) =>
     el.classList.toggle('apothecary-processing', apothProcess.running)
   );
+  document.querySelectorAll('.int-cell[data-int-key="crafting_desk"]').forEach((el) =>
+    el.classList.toggle('crafting-desk-processing', craftingDeskProcess.running)
+  );
   document.querySelectorAll('.int-cell[data-int-key="wonky_loom"]').forEach((el) =>
     el.classList.toggle('wonky-loom-weaving', loomProcess.running)
   );

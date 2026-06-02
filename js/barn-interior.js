@@ -17,33 +17,43 @@ function parseBarnInteriorCoordKey(key) {
 }
 
 function ensureBarnInterior(cfg) {
-  if (!cfg || !isLargeBarn(cfg)) {
+  if (!cfg || typeof isBarnInteriorAvailable !== 'function' || !isBarnInteriorAvailable(cfg)) {
     if (cfg) cfg.barnInterior = null;
     return null;
   }
+  const spec = getBarnInteriorLayoutSpec(cfg);
+  const penCount = getBarnAnimalSlotCount(cfg);
   if (!cfg.barnInterior) {
     const cells = {};
-    BARN_INTERIOR_DEFAULT_LAYOUT.forEach((slotType, i) => {
-      const x = i % BARN_INTERIOR_COLS;
-      const y = Math.floor(i / BARN_INTERIOR_COLS);
+    spec.layout.forEach((slotType, i) => {
+      const x = i % spec.cols;
+      const y = Math.floor(i / spec.cols);
       cells[barnInteriorCoordKey(x, y)] = slotType;
     });
     cfg.barnInterior = {
+      cols: spec.cols,
+      rows: spec.rows,
       cells,
       customPlacements: {},
+      placementStock: {},
       penAssignments: {},
-      penAnimalTypes: [null, null, null, null],
+      penAnimalTypes: Array(penCount).fill(null),
     };
   }
   const bi = cfg.barnInterior;
   if (!bi.cells) bi.cells = {};
   if (!bi.customPlacements) bi.customPlacements = {};
+  if (!bi.placementStock) bi.placementStock = {};
   if (!bi.penAssignments) bi.penAssignments = {};
-  if (!bi.penAnimalTypes) bi.penAnimalTypes = [null, null, null, null];
-  migrateBarnInteriorLayout(bi);
+  if (!bi.penAnimalTypes) bi.penAnimalTypes = [];
+  if (!bi.cols || !bi.rows) {
+    bi.cols = spec.cols;
+    bi.rows = spec.rows;
+  }
+  if (!barnInteriorLayoutMatchesSpec(bi, cfg)) migrateBarnInteriorLayout(bi, cfg);
   recoverOrphanedBarnInteriorItems(bi);
   pruneBarnInteriorCellData(bi);
-  ensureBarnInteriorPenAssignments(bi);
+  ensureBarnInteriorPenAssignments(bi, cfg);
   syncBarnInteriorPenAnimals(cfg);
   return bi;
 }
@@ -53,9 +63,17 @@ function recoverOrphanedBarnInteriorItems(bi) {
   const orphans = Object.keys(bi.customPlacements || {}).filter((key) => bi.cells[key] !== 'place');
   orphans.forEach((key) => {
     const item = bi.customPlacements[key];
+    const stock = bi.placementStock?.[key];
     delete bi.customPlacements[key];
+    if (bi.placementStock) delete bi.placementStock[key];
     const target = barnInteriorCellKeysOfType(bi.cells, 'place').find((k) => !bi.customPlacements[k]);
-    if (target) bi.customPlacements[target] = item;
+    if (target) {
+      bi.customPlacements[target] = item;
+      if (stock && item === 'hay_bale') {
+        if (!bi.placementStock) bi.placementStock = {};
+        bi.placementStock[target] = stock;
+      }
+    }
   });
 }
 
@@ -70,20 +88,21 @@ function barnInteriorCellKeysOfType(cells, type) {
     });
 }
 
-function migrateBarnInteriorLayout(bi) {
-  if (!bi?.cells) return;
-  const placeCount = Object.values(bi.cells).filter((t) => t === 'place').length;
-  const penCount = Object.values(bi.cells).filter((t) => t === 'pen').length;
-  if (placeCount >= BARN_INTERIOR_PLACE_SLOT_COUNT && penCount >= BARN_INTERIOR_PEN_COUNT) return;
+function migrateBarnInteriorLayout(bi, cfg) {
+  if (!bi?.cells || !cfg) return;
+  if (barnInteriorLayoutMatchesSpec(bi, cfg)) return;
 
   const savedPlacements = { ...(bi.customPlacements || {}) };
   const savedPenAssign = { ...(bi.penAssignments || {}) };
+  const spec = getBarnInteriorLayoutSpec(cfg);
   const cells = {};
-  BARN_INTERIOR_DEFAULT_LAYOUT.forEach((slotType, i) => {
-    const x = i % BARN_INTERIOR_COLS;
-    const y = Math.floor(i / BARN_INTERIOR_COLS);
+  spec.layout.forEach((slotType, i) => {
+    const x = i % spec.cols;
+    const y = Math.floor(i / spec.cols);
     cells[barnInteriorCoordKey(x, y)] = slotType;
   });
+  bi.cols = spec.cols;
+  bi.rows = spec.rows;
   bi.cells = cells;
   bi.customPlacements = {};
   const placeKeys = barnInteriorCellKeysOfType(cells, 'place');
@@ -101,25 +120,27 @@ function migrateBarnInteriorLayout(bi) {
     const prev = savedPenAssign[key];
     bi.penAssignments[key] = typeof prev === 'number' ? prev : defaultIdx;
   });
-  normalizeBarnInteriorPenAssignments(bi);
+  normalizeBarnInteriorPenAssignments(bi, cfg);
 }
 
-function ensureBarnInteriorPenAssignments(bi) {
+function ensureBarnInteriorPenAssignments(bi, cfg) {
   if (!bi.penAssignments) bi.penAssignments = {};
   const penKeys = barnInteriorCellKeysOfType(bi.cells, 'pen');
   penKeys.forEach((key, i) => {
     if (bi.penAssignments[key] == null) bi.penAssignments[key] = i;
   });
-  normalizeBarnInteriorPenAssignments(bi);
+  normalizeBarnInteriorPenAssignments(bi, cfg);
 }
 
-function normalizeBarnInteriorPenAssignments(bi) {
+function normalizeBarnInteriorPenAssignments(bi, cfg) {
   const penKeys = barnInteriorCellKeysOfType(bi.cells, 'pen');
+  const penCount = penKeys.length;
   const used = new Set();
   penKeys.forEach((key, i) => {
     let slot = bi.penAssignments[key];
-    if (typeof slot !== 'number' || slot < 0 || slot >= BARN_INTERIOR_PEN_COUNT || used.has(slot)) {
-      slot = [0, 1, 2, 3].find((n) => !used.has(n)) ?? i;
+    const slots = Array.from({ length: penCount }, (_, n) => n);
+    if (typeof slot !== 'number' || slot < 0 || slot >= penCount || used.has(slot)) {
+      slot = slots.find((n) => !used.has(n)) ?? i;
     }
     bi.penAssignments[key] = slot;
     used.add(slot);
@@ -131,8 +152,10 @@ function syncBarnInteriorPenAnimals(cfg) {
   const bi = cfg?.barnInterior;
   if (!bi || !cfg) return;
   if (typeof ensureBarnAnimalSlots === 'function') ensureBarnAnimalSlots(cfg);
-  if (!bi.penAnimalTypes) bi.penAnimalTypes = [null, null, null, null];
-  for (let i = 0; i < BARN_INTERIOR_PEN_COUNT; i++) {
+  const penCount = getBarnAnimalSlotCount(cfg);
+  while (bi.penAnimalTypes.length < penCount) bi.penAnimalTypes.push(null);
+  bi.penAnimalTypes.length = penCount;
+  for (let i = 0; i < penCount; i++) {
     bi.penAnimalTypes[i] = cfg.animalSlots?.[i]?.type || null;
   }
 }
@@ -155,7 +178,11 @@ function barnInteriorPenSlotIndexAt(x, y, bi) {
 }
 
 function barnInteriorIsSwappableCellType(type) {
-  return type === 'pen' || type === 'place';
+  return type === 'pen' || type === 'place' || type === 'layout';
+}
+
+function barnInteriorIsUtilityCellType(type) {
+  return type === 'place';
 }
 
 function barnInteriorCanDragFrom(x, y) {
@@ -188,7 +215,14 @@ function captureBarnInteriorCellPayload(bi, x, y) {
     return { kind: 'pen', penSlot: bi.penAssignments[key] };
   }
   if (type === 'place') {
-    return { kind: 'place', item: bi.customPlacements[key] || null };
+    const item = bi.customPlacements[key] || null;
+    const stock = item === 'hay_bale' && bi.placementStock?.[key]
+      ? { hay: Math.max(0, Number(bi.placementStock[key].hay) || 0) }
+      : null;
+    return { kind: 'place', item, stock };
+  }
+  if (type === 'layout' || type === 'empty') {
+    return { kind: 'layout' };
   }
   return null;
 }
@@ -200,28 +234,61 @@ function pruneBarnInteriorCellData(bi) {
   Object.keys(bi.customPlacements || {}).forEach((key) => {
     if (bi.cells[key] !== 'place') delete bi.customPlacements[key];
   });
+  Object.keys(bi.placementStock || {}).forEach((key) => {
+    if (bi.cells[key] !== 'place') delete bi.placementStock[key];
+  });
 }
 
 function applyBarnInteriorCellPayload(bi, key, payload) {
   delete bi.penAssignments[key];
   delete bi.customPlacements[key];
+  if (bi.placementStock) delete bi.placementStock[key];
   if (!payload) return;
   bi.cells[key] = payload.kind;
   if (payload.kind === 'pen') {
     bi.penAssignments[key] = payload.penSlot;
-  } else if (payload.kind === 'place' && payload.item) {
-    bi.customPlacements[key] = payload.item;
+  } else if (payload.kind === 'place') {
+    if (payload.item) {
+      bi.customPlacements[key] = payload.item;
+      if (payload.item === 'hay_bale' && payload.stock) {
+        if (!bi.placementStock) bi.placementStock = {};
+        bi.placementStock[key] = {
+          hay: Math.min(BARN_HAY_BALE_MAX_HAY, Math.max(0, Number(payload.stock.hay) || 0)),
+        };
+      }
+    }
+  } else if (payload.kind === 'layout') {
+    bi.cells[key] = 'layout';
   }
+}
+
+function returnHayToBagOrStore(amount) {
+  let left = Math.max(0, amount | 0);
+  if (left < 1) return 0;
+  const icon = '🌾';
+  const name = 'Hay';
+  while (left > 0 && invTotal() < getInvCap()) {
+    const added = invAddDirect('hay', icon, name, 1);
+    if (added < 1) break;
+    left--;
+  }
+  while (left > 0) {
+    const added = storageAddDirect('hay', icon, name, left);
+    if (added < 1) break;
+    left -= added;
+  }
+  return amount - left;
 }
 
 function barnInteriorCustomPlacementsIncludeStorage(bi) {
   return Object.values(bi?.customPlacements || {}).some((key) => getBarnInteriorPlaceableDef(key)?.storageBonus);
 }
 
-function finishBarnInteriorLayoutEdit(bi) {
+function finishBarnInteriorLayoutEdit(bi, cfg) {
   pruneBarnInteriorCellData(bi);
-  ensureBarnInteriorPenAssignments(bi);
-  normalizeBarnInteriorPenAssignments(bi);
+  cfg = cfg || getBarnConfig(activeBarnInteriorInstanceId);
+  ensureBarnInteriorPenAssignments(bi, cfg);
+  normalizeBarnInteriorPenAssignments(bi, cfg);
   scheduleSaveGame();
   renderBarnInteriorGrid();
   if (barnInteriorCustomPlacementsIncludeStorage(bi) && typeof renderBarnScreen === 'function') {
@@ -240,7 +307,7 @@ function applyBarnInteriorDrop(fromX, fromY, toX, toY) {
   const k2 = barnInteriorCoordKey(toX, toY);
   applyBarnInteriorCellPayload(bi, k1, payloadTo);
   applyBarnInteriorCellPayload(bi, k2, payloadFrom);
-  finishBarnInteriorLayoutEdit(bi);
+  finishBarnInteriorLayoutEdit(bi, cfg);
   return true;
 }
 
@@ -253,6 +320,14 @@ function renderBarnInteriorDragGhostHtml(payload, cfg) {
   }
   if (payload.kind === 'place') {
     if (payload.item) {
+      if (payload.item === 'hay_bale') {
+        const hay = Math.min(BARN_HAY_BALE_MAX_HAY, Math.max(0, Number(payload.stock?.hay) || 0));
+        return '<div class="barn-int-place filled barn-int-place--haybale">'
+          + '<span class="barn-int-place-icon">🌾</span>'
+          + '<span class="barn-int-place-label">Hay Bale</span>'
+          + '<span class="barn-int-hay-stat">' + hay + '/' + BARN_HAY_BALE_MAX_HAY + '</span>'
+          + '</div>';
+      }
       const def = getBarnInteriorPlaceableDef(payload.item);
       return '<div class="barn-int-place filled">'
         + '<span class="barn-int-place-icon">' + (def?.icon || '📦') + '</span>'
@@ -262,6 +337,9 @@ function renderBarnInteriorDragGhostHtml(payload, cfg) {
     return '<div class="barn-int-place-empty barn-int-drag-ghost-empty">'
       + '<span class="barn-int-place-add-icon">＋</span>'
       + '</div>';
+  }
+  if (payload.kind === 'layout') {
+    return '<div class="barn-int-layout barn-int-layout--ghost"></div>';
   }
   return '<span>📦</span>';
 }
@@ -280,32 +358,81 @@ function renderBarnInteriorPenCell(penIndex, animalKey) {
   const slotHint = barnInteriorEditMode && penIndex >= 0
     ? (' · slot ' + (penIndex + 1))
     : '';
-  return '<div class="barn-int-pen empty">'
-    + '<span class="barn-int-pen-icon">🌾</span>'
-    + '<span class="barn-int-pen-label">empty pen' + slotHint + '</span>'
+  if (barnInteriorEditMode) {
+    return '<div class="barn-int-pen empty">'
+      + '<span class="barn-int-pen-icon">🌾</span>'
+      + '<span class="barn-int-pen-label">empty pen' + slotHint + '</span>'
+      + '</div>';
+  }
+  return '<div class="barn-int-pen empty barn-int-pen--add" role="button" tabindex="0" aria-label="Add animal to pen">'
+    + '<span class="barn-int-pen-add-icon">＋</span>'
+    + '<span class="barn-int-pen-label">add animal' + slotHint + '</span>'
     + '</div>';
+}
+
+function renderBarnInteriorLayoutCell() {
+  if (barnInteriorEditMode) {
+    return '<div class="barn-int-layout" aria-hidden="true">'
+      + '<span class="barn-int-layout-hint">⇄</span>'
+      + '</div>';
+  }
+  return '<div class="barn-int-layout barn-int-layout--hidden" aria-hidden="true"></div>';
+}
+
+function renderBarnInteriorHabitatCell() {
+  return '<div class="barn-int-habitat inactive" aria-disabled="true">'
+    + '<span class="barn-int-habitat-icon">🌿</span>'
+    + '<span class="barn-int-habitat-label">Specialty habitat</span>'
+    + '<span class="barn-int-habitat-sub">locked</span>'
+    + '</div>';
+}
+
+function barnInteriorRemoveBtnHtml(x, y) {
+  return '<button type="button" class="barn-int-remove" aria-label="Remove"'
+    + ' onpointerdown="event.stopPropagation();event.preventDefault();clearBarnInteriorPlace(' + x + ',' + y + ')">✕</button>';
+}
+
+function renderBarnInteriorHayBaleCell(x, y, bi) {
+  const key = barnInteriorCoordKey(x, y);
+  const hay = Math.min(BARN_HAY_BALE_MAX_HAY, Math.max(0, Number(bi.placementStock?.[key]?.hay) || 0));
+  const full = hay >= BARN_HAY_BALE_MAX_HAY;
+  const haveHay = itemCountBagAndStore('hay');
+  const canAdd10 = !full && haveHay > 0;
+  const canAddMax = !full && haveHay > 0;
+  const removeBtn = barnInteriorEditMode ? barnInteriorRemoveBtnHtml(x, y) : '';
+  const add10 = canAdd10
+    ? (' onpointerdown="event.stopPropagation();event.preventDefault();barnHayBaleAddHay(' + x + ',' + y + ',' + BARN_HAY_BALE_ADD_CHUNK + ')"')
+    : ' disabled';
+  const addMax = canAddMax
+    ? (' onpointerdown="event.stopPropagation();event.preventDefault();barnHayBaleAddHay(' + x + ',' + y + ',0)"')
+    : ' disabled';
+  return '<div class="barn-int-place filled barn-int-place--haybale">'
+    + removeBtn
+    + '<span class="barn-int-place-icon">🌾</span>'
+    + '<span class="barn-int-place-label">Hay Bale</span>'
+    + '<span class="barn-int-hay-stat">' + hay + '/' + BARN_HAY_BALE_MAX_HAY + '</span>'
+    + '<div class="barn-int-haybale-actions">'
+    + '<button type="button" class="barn-int-hay-btn"' + add10 + '>+10</button>'
+    + '<button type="button" class="barn-int-hay-btn"' + addMax + '>Add max</button>'
+    + '</div></div>';
 }
 
 function renderBarnInteriorPlaceCell(x, y, bi) {
   const key = barnInteriorCoordKey(x, y);
   const placed = bi.customPlacements[key];
   if (placed) {
+    if (placed === 'hay_bale') return renderBarnInteriorHayBaleCell(x, y, bi);
     const def = getBarnInteriorPlaceableDef(placed);
-    const removeBtn = barnInteriorEditMode
-      ? ('<button type="button" class="barn-int-remove" onclick="event.stopPropagation();clearBarnInteriorPlace(' + x + ',' + y + ')">✕</button>')
-      : '';
+    const removeBtn = barnInteriorEditMode ? barnInteriorRemoveBtnHtml(x, y) : '';
     return '<div class="barn-int-place filled">'
       + removeBtn
       + '<span class="barn-int-place-icon">' + (def?.icon || '📦') + '</span>'
       + '<span class="barn-int-place-label">' + (def?.name || placed) + '</span>'
       + '</div>';
   }
-  if (barnInteriorEditMode) {
-    return '<div class="barn-int-place-empty" role="button" tabindex="0" aria-label="Place item">'
-      + '<span class="barn-int-place-add-icon">＋</span>'
-      + '</div>';
-  }
-  return '<div class="barn-int-place-empty barn-int-place-empty--view"></div>';
+  return '<div class="barn-int-place-empty barn-int-place-empty--add" role="button" tabindex="0" aria-label="Place barn furniture">'
+    + '<span class="barn-int-place-add-icon">＋</span>'
+    + '</div>';
 }
 
 function renderBarnInteriorCell(x, y, cfg) {
@@ -318,6 +445,8 @@ function renderBarnInteriorCell(x, y, cfg) {
     return renderBarnInteriorPenCell(penIndex, animalKey);
   }
   if (type === 'place') return renderBarnInteriorPlaceCell(x, y, bi);
+  if (type === 'layout' || type === 'empty') return renderBarnInteriorLayoutCell();
+  if (type === 'habitat') return renderBarnInteriorHabitatCell();
   if (type === 'doorway') {
     return '<button type="button" class="barn-int-doorway" onclick="exitBarnInterior()">'
       + '<span>🚪</span><span>exit</span></button>';
@@ -332,14 +461,18 @@ function renderBarnInteriorGrid() {
   if (!cfg) return;
   ensureBarnInterior(cfg);
   syncBarnInteriorPenAnimals(cfg);
+  const cols = cfg.barnInterior.cols || getBarnInteriorLayoutSpec(cfg).cols;
+  const rows = cfg.barnInterior.rows || getBarnInteriorLayoutSpec(cfg).rows;
   let html = '';
-  for (let y = 0; y < BARN_INTERIOR_ROWS; y++) {
-    for (let x = 0; x < BARN_INTERIOR_COLS; x++) {
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
       const type = barnInteriorCellType(x, y, cfg.barnInterior);
       const draggable = barnInteriorEditMode && barnInteriorCanDragFrom(x, y);
       const classes = ['barn-int-cell', 'barn-int-cell--' + type];
       if (type === 'place') classes.push('barn-int-cell--place-slot');
-      if (barnInteriorEditMode && (type === 'pen' || type === 'place')) classes.push('barn-int-cell--editable');
+      if (type === 'habitat') classes.push('barn-int-cell--habitat-slot', 'barn-int-cell--locked');
+      if (type === 'layout' || type === 'empty') classes.push('barn-int-cell--layout-slot');
+      if (barnInteriorEditMode && barnInteriorIsSwappableCellType(type)) classes.push('barn-int-cell--editable');
       if (draggable) classes.push('barn-int-cell--draggable');
       html += '<div class="' + classes.join(' ') + '" data-barn-int-x="' + x + '" data-barn-int-y="' + y + '" data-barn-int-type="' + type + '">'
         + renderBarnInteriorCell(x, y, cfg)
@@ -347,8 +480,15 @@ function renderBarnInteriorGrid() {
     }
   }
   grid.innerHTML = html;
-  grid.style.gridTemplateColumns = 'repeat(' + BARN_INTERIOR_COLS + ', 1fr)';
+  grid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+  grid.dataset.barnIntCols = String(cols);
+  grid.dataset.barnIntRows = String(rows);
   document.getElementById('barn-interior-screen')?.classList.toggle('barn-interior-edit-mode', barnInteriorEditMode);
+  const titleEl = document.querySelector('#barn-interior-screen .top-bar-title');
+  if (titleEl && typeof getBarnDisplayName === 'function') {
+    const typeId = typeof getBarnPlotTypeId === 'function' ? getBarnPlotTypeId(cfg) : 'small_barn_complete';
+    titleEl.textContent = getBarnDisplayName(typeId, cfg) + ' Interior';
+  }
 }
 
 function syncBarnInteriorEditButtons() {
@@ -362,8 +502,8 @@ function toggleBarnInteriorEditMode() {
   const hint = document.getElementById('barn-interior-hint');
   if (hint) {
     hint.textContent = barnInteriorEditMode
-      ? 'Drag any pen or ＋ tile to swap positions — animals and furniture move with their tile.'
-      : 'Turn on edit layout to rearrange pens and barn items.';
+      ? 'Drag pens, ＋ utilities, or the ⇄ spacer. Tap ✕ on a utility to pick it up (hay bales return their hay).'
+      : 'Turn on edit layout to rearrange pens, utilities, and spacing.';
   }
   if (!barnInteriorEditMode) {
     closeBarnInteriorPlaceMenu();
@@ -373,7 +513,7 @@ function toggleBarnInteriorEditMode() {
     clearBarnInteriorDropTargets();
   }
   renderBarnInteriorGrid();
-  showToast(barnInteriorEditMode ? 'Edit mode — drag pens and ＋ tiles to swap animals and furniture.' : 'Layout saved.');
+  showToast(barnInteriorEditMode ? 'Edit mode — drag pens, ＋ slots, or the ⇄ spacer to customize layout.' : 'Layout saved.');
 }
 
 function closeBarnInteriorPlaceMenu() {
@@ -381,15 +521,16 @@ function closeBarnInteriorPlaceMenu() {
 }
 
 function openBarnInteriorPlaceMenu(x, y) {
-  if (!barnInteriorEditMode) {
-    showToast('Turn on edit layout first.');
-    return;
-  }
+  if (typeof closeBarnAdoptMenu === 'function') closeBarnAdoptMenu();
   const cfg = getBarnConfig(activeBarnInteriorInstanceId);
   const bi = ensureBarnInterior(cfg);
   if (!bi) return;
   const key = barnInteriorCoordKey(x, y);
-  if (bi.cells[key] !== 'place' || bi.customPlacements[key]) return;
+  if (bi.cells[key] !== 'place') {
+    showToast('Utilities can only be placed in ＋ slots.');
+    return;
+  }
+  if (bi.customPlacements[key]) return;
   closeBarnInteriorPlaceMenu();
   const w = document.getElementById('game-wrapper');
   if (!w) return;
@@ -410,21 +551,28 @@ function openBarnInteriorPlaceMenu(x, y) {
       + '<span class="plot-add-item-name">' + def.name
       + '<span class="plot-add-item-drops">' + stockLine + ' — ' + def.desc + '</span></span></button>';
   });
-  m.innerHTML = '<div class="plot-add-title">Place in barn</div>'
-    + '<div class="plot-add-sub">Pick something for this slot (must be in bag or storage).</div>'
+  m.innerHTML = '<div class="plot-add-title">Barn furniture</div>'
+    + '<div class="plot-add-sub">Utility slot — pick from bag or storage.</div>'
     + options
     + '<button type="button" class="plot-add-cancel" onclick="closeBarnInteriorPlaceMenu()">cancel</button>';
   w.appendChild(m);
 }
 
 function barnInteriorPlaceableOwned(key) {
+  const def = getBarnInteriorPlaceableDef(key);
+  if (def?.builtFromHay) return itemCountBagAndStore('hay') >= BARN_HAY_BALE_BUILD_HAY;
   return itemCountBagAndStore(key) > 0;
 }
 
 function barnInteriorPlaceableStockLabel(key) {
+  const def = getBarnInteriorPlaceableDef(key);
+  if (def?.builtFromHay) {
+    const n = itemCountBagAndStore('hay');
+    return formatRecipeMatLine('hay', BARN_HAY_BALE_BUILD_HAY, n);
+  }
   if (barnInteriorPlaceableOwned(key)) {
     const n = itemCountBagAndStore(key);
-    return formatRecipeMatLine(getBarnInteriorPlaceableDef(key)?.name || key, 1, n);
+    return formatRecipeMatLine(def?.name || key, 1, n);
   }
   return 'none in inventory or storage';
 }
@@ -435,16 +583,32 @@ function placeBarnInteriorItem(x, y, placeableKey) {
   if (!bi) return;
   const def = getBarnInteriorPlaceableDef(placeableKey);
   if (!barnInteriorPlaceableOwned(placeableKey)) {
-    showToast('None in inventory or storage.');
+    showToast(def?.builtFromHay
+      ? ('Need ' + BARN_HAY_BALE_BUILD_HAY + ' hay in bag or storage.')
+      : 'None in inventory or storage.');
     return;
   }
   const key = barnInteriorCoordKey(x, y);
-  if (bi.cells[key] !== 'place' || bi.customPlacements[key]) return;
-  if (!consumeOneFromBagOrStore(placeableKey)) {
-    showToast('Could not take ' + (def?.name || placeableKey) + '.');
+  if (bi.cells[key] !== 'place') {
+    showToast('Utilities can only be placed in ＋ slots.');
     return;
   }
-  bi.customPlacements[key] = placeableKey;
+  if (bi.customPlacements[key]) return;
+  if (def?.builtFromHay) {
+    if (!consumeManyFromBagOrStore('hay', BARN_HAY_BALE_BUILD_HAY)) {
+      showToast('Could not take ' + BARN_HAY_BALE_BUILD_HAY + ' hay.');
+      return;
+    }
+    bi.customPlacements[key] = placeableKey;
+    if (!bi.placementStock) bi.placementStock = {};
+    bi.placementStock[key] = { hay: BARN_HAY_BALE_BUILD_HAY };
+  } else {
+    if (!consumeOneFromBagOrStore(placeableKey)) {
+      showToast('Could not take ' + (def?.name || placeableKey) + '.');
+      return;
+    }
+    bi.customPlacements[key] = placeableKey;
+  }
   scheduleSaveGame();
   renderBarnInteriorGrid();
   if (typeof syncUI === 'function') syncUI();
@@ -452,6 +616,39 @@ function placeBarnInteriorItem(x, y, placeableKey) {
     renderBarnScreen();
   }
   showToast((def?.icon || '📦') + ' Placed.');
+}
+
+function barnHayBaleAddHay(x, y, amount) {
+  const cfg = getBarnConfig(activeBarnInteriorInstanceId);
+  const bi = ensureBarnInterior(cfg);
+  if (!bi) return;
+  const key = barnInteriorCoordKey(x, y);
+  if (bi.customPlacements[key] !== 'hay_bale') return;
+  if (!bi.placementStock) bi.placementStock = {};
+  const cur = Math.min(BARN_HAY_BALE_MAX_HAY, Math.max(0, Number(bi.placementStock[key]?.hay) || 0));
+  const room = BARN_HAY_BALE_MAX_HAY - cur;
+  if (room < 1) {
+    showToast('Hay bale is full.');
+    return;
+  }
+  const have = itemCountBagAndStore('hay');
+  if (have < 1) {
+    showToast('No hay in bag or storage.');
+    return;
+  }
+  const want = amount > 0
+    ? Math.min(room, amount, have)
+    : Math.min(room, have);
+  if (want < 1) return;
+  if (!consumeManyFromBagOrStore('hay', want)) {
+    showToast('Could not take hay.');
+    return;
+  }
+  bi.placementStock[key] = { hay: cur + want };
+  scheduleSaveGame();
+  renderBarnInteriorGrid();
+  if (typeof syncUI === 'function') syncUI();
+  showToast('🌾 Added ' + want + ' hay (' + bi.placementStock[key].hay + '/' + BARN_HAY_BALE_MAX_HAY + ').');
 }
 
 function clearBarnInteriorPlace(x, y) {
@@ -462,8 +659,22 @@ function clearBarnInteriorPlace(x, y) {
   if (bi.cells[cellKey] !== 'place') return;
   const prev = bi.customPlacements[cellKey];
   if (!prev) return;
-  delete bi.customPlacements[cellKey];
   const def = getBarnInteriorPlaceableDef(prev);
+  if (prev === 'hay_bale') {
+    const hay = Math.max(0, Number(bi.placementStock?.[cellKey]?.hay) || 0);
+    delete bi.customPlacements[cellKey];
+    if (bi.placementStock) delete bi.placementStock[cellKey];
+    const returned = returnHayToBagOrStore(hay);
+    scheduleSaveGame();
+    renderBarnInteriorGrid();
+    if (typeof syncUI === 'function') syncUI();
+    if (returned >= hay) showToast('🌾 Hay bale removed — ' + hay + ' hay returned.');
+    else if (returned > 0) showToast('🌾 Bale removed; ' + returned + '/' + hay + ' hay returned (bag and storage full).');
+    else showToast('🌾 Bale removed but hay could not be returned (inventory full).');
+    return;
+  }
+  delete bi.customPlacements[cellKey];
+  if (bi.placementStock) delete bi.placementStock[cellKey];
   const where = returnOneToBagOrStore(prev, def?.icon || '📦', def?.name || prev);
   scheduleSaveGame();
   renderBarnInteriorGrid();
@@ -547,6 +758,7 @@ function unbindBarnIntDragDocumentListeners() {
 
 function onBarnInteriorCellPointerDown(e, cell) {
   if (e.button !== undefined && e.button !== 0) return;
+  if (e.target.closest('.barn-int-remove, .barn-int-haybale-actions')) return;
   const x = Number(cell.dataset.barnIntX);
   const y = Number(cell.dataset.barnIntY);
   if (!barnInteriorCanDragFrom(x, y)) return;
@@ -612,10 +824,12 @@ function onBarnInteriorViewportPointerDown(e) {
   if (e.target.closest('#barn-interior-edit-bar')) return;
   if (e.target.closest('.barn-int-doorway')) return;
   if (e.target.closest('#barn-int-place-menu')) return;
-  if (e.target.closest('.barn-int-remove')) return;
+  if (e.target.closest('#barn-int-adopt-menu')) return;
+  if (e.target.closest('.barn-int-remove, .barn-int-haybale-actions')) return;
   const cell = e.target.closest('.barn-int-cell');
   if (!cell) {
     closeBarnInteriorPlaceMenu();
+    if (typeof closeBarnAdoptMenu === 'function') closeBarnAdoptMenu();
     return;
   }
 
@@ -637,10 +851,38 @@ function onBarnInteriorViewportPointerDown(e) {
 
   const x = Number(cell.dataset.barnIntX);
   const y = Number(cell.dataset.barnIntY);
-  if (barnInteriorIsSwappableCellType(barnInteriorCellType(x, y))) {
-    showToast('Turn on edit layout to drag pens and ＋ tiles.');
-  } else if (barnInteriorIsEmptyPlaceSlot(x, y)) {
-    showToast('Turn on edit layout to place items.');
+  const type = barnInteriorCellType(x, y);
+  if (type === 'pen') {
+    const bi = getBarnInteriorBi();
+    const penIndex = barnInteriorPenSlotIndexAt(x, y, bi);
+    const cfg = getBarnConfig(activeBarnInteriorInstanceId);
+    const occupied = penIndex >= 0 && (cfg?.animalSlots?.[penIndex]?.type || bi?.penAnimalTypes?.[penIndex]);
+    if (!occupied) {
+      if (barnIntSuppressClick || barnIntDrag) return;
+      if (typeof openBarnAdoptMenu === 'function') openBarnAdoptMenu(penIndex);
+      return;
+    }
+    showToast('Manage this animal from the barn menu.');
+    return;
+  }
+  if (type === 'place') {
+    if (barnInteriorIsEmptyPlaceSlot(x, y)) {
+      if (barnIntSuppressClick || barnIntDrag) return;
+      openBarnInteriorPlaceMenu(x, y);
+      return;
+    }
+    return;
+  }
+  if (type === 'habitat') {
+    showToast('Specialty habitat slots unlock later via Architecture.');
+    return;
+  }
+  if (type === 'layout' || type === 'empty') {
+    showToast('Turn on edit layout to move the invisible spacer tile.');
+    return;
+  }
+  if (barnInteriorIsSwappableCellType(type)) {
+    showToast('Turn on edit layout to drag pens and utility tiles.');
   }
 }
 
@@ -654,8 +896,8 @@ function initBarnInteriorViewport() {
 function openBarnInterior(instanceId) {
   instanceId = instanceId || activeBarnInstanceId;
   const cfg = getBarnConfig(instanceId);
-  if (!cfg || !isLargeBarn(cfg)) {
-    showToast('Enter is only available at a large barn.');
+  if (!cfg || typeof isBarnInteriorAvailable !== 'function' || !isBarnInteriorAvailable(cfg)) {
+    showToast('Finish building the barn before entering.');
     return;
   }
   activeBarnInteriorInstanceId = instanceId;
@@ -667,6 +909,11 @@ function openBarnInterior(instanceId) {
   initBarnInteriorViewport();
   syncBarnInteriorEditButtons();
   renderBarnInteriorGrid();
+  if (pendingBarnAdoptPenSlot != null) {
+    const penIdx = pendingBarnAdoptPenSlot;
+    pendingBarnAdoptPenSlot = null;
+    if (typeof openBarnAdoptMenu === 'function') openBarnAdoptMenu(penIdx);
+  }
   const feedingCfg = getBarnConfig(instanceId);
   if (feedingCfg && typeof barnAnyAnimalFeeding === 'function' && barnAnyAnimalFeeding(feedingCfg) && typeof startBarnTimer === 'function') {
     startBarnTimer();
@@ -713,7 +960,7 @@ function handleBarnSurfaceTap(e, surface) {
   if (!instanceId) return;
   setActiveBarn(instanceId);
   const cfg = getBarnConfig(instanceId);
-  if (!cfg || !isLargeBarn(cfg)) {
+  if (!cfg || typeof isBarnInteriorAvailable !== 'function' || !isBarnInteriorAvailable(cfg)) {
     barnMenuTap(e);
     return;
   }

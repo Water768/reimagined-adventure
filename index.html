@@ -315,8 +315,9 @@
       <div id="gather-loot-list"><div class="store-line" style="color:rgba(200,169,110,0.45)">Select a gathering spot.</div></div>
     </div>
     <div class="wb-xp-preview" id="gather-xp-preview"></div>
-    <div class="gather-status idle" id="gather-status">Ready to gather</div>
+    <div class="gather-status idle" id="gather-status"></div>
     <div class="wb-action-area" id="gather-buttons"></div>
+    <div id="gather-fawn-panel" style="display:none"></div>
     <div class="wb-log" id="gather-log"></div>
   </div>
 </div>
@@ -454,17 +455,17 @@
       </div>
       <div id="fire-pit-panel-burn" class="fire-pit-panel" hidden>
         <div class="store-items" style="margin-bottom:12px">
-          <div class="store-items-title">FUEL MATERIAL</div>
+          <div class="store-items-title">FUEL</div>
           <div id="fpb-fuel-list"></div>
         </div>
+        <div class="wb-xp-preview" id="fpb-xp-preview"></div>
       </div>
       <div id="fire-pit-panel-light" class="fire-pit-panel" hidden>
         <div class="store-items" style="margin-bottom:12px">
-          <div class="store-items-title">SIMPLE TORCH</div>
-          <div class="store-line" style="color:rgba(200,169,110,0.65);padding:2px 0 8px">100 simple-tier logs • Fire Lv 5</div>
           <div class="store-items-title">LOG TYPE</div>
           <div id="fpl-light-log-list"></div>
         </div>
+        <div class="wb-xp-preview" id="fpl-xp-preview"></div>
       </div>
     </div>
     <div class="fish-status idle" id="fire-pit-status">Use the buttons below to add materials</div>
@@ -588,9 +589,9 @@
       <div class="barn-panel-dark barn-slots-panel">
         <div class="store-items-title" id="barn-animal-slots-title">ANIMAL SLOTS · 1</div>
         <div class="barn-animal-slots" id="barn-animal-slots"></div>
-        <div class="barn-animal-slots-hint" id="barn-animal-slots-hint" hidden>Tap an animal to dismiss it</div>
+        <div class="barn-animal-slots-hint" id="barn-animal-slots-hint" hidden>Tap a filled slot to dismiss · tap ＋ to add inside the barn</div>
       </div>
-      <div class="wb-action-area barn-animal-actions" id="barn-animal-actions" hidden></div>
+      <div id="barn-trough-section" class="barn-panel-dark barn-trough-panel"></div>
       <div id="barn-animal-panel"></div>
       <div id="barn-upgrade-section"></div>
     </div>
@@ -618,8 +619,8 @@
     </div>
   </div>
   <div class="plot-edit-bar interior-build-bar barn-interior-edit-bar" id="barn-interior-edit-bar">
-    <button type="button" class="plot-edit-btn" id="barn-interior-edit-btn" onclick="toggleBarnInteriorEditMode()">✏️ Edit layout</button>
-    <button type="button" class="plot-edit-btn plot-edit-btn-secondary" id="barn-interior-menu-btn" onclick="openBarnScreen()">🏛️ Barn menu</button>
+    <button type="button" class="plot-edit-btn barn-interior-menu-btn" id="barn-interior-menu-btn" onclick="openBarnScreen()">🏛️ Barn menu</button>
+    <button type="button" class="plot-edit-btn plot-edit-btn-secondary" id="barn-interior-edit-btn" onclick="toggleBarnInteriorEditMode()">✏️ Edit layout</button>
   </div>
   <p class="barn-interior-hint" id="barn-interior-hint">Turn on edit layout to rearrange pens and barn items.</p>
 </div>
@@ -659,12 +660,99 @@
       <div class="store-items" style="margin-bottom:12px">
         <div class="store-items-title">DRYING LOAD</div>
         <div id="washing-line-recipe-list"></div>
+        <div class="wb-xp-preview" id="washing-line-xp-preview"></div>
       </div>
       <div id="washing-line-dry-slots" class="wl-lines-host"></div>
       <div class="wb-action-area wl-dry-actions" id="washing-line-buttons"></div>
     </div>
     <div class="fish-status idle" id="washing-line-status">Use the buttons below to add materials</div>
     <div id="washing-line-upgrade-section"></div>
+  </div>
+</div>
+
+<!-- WHISPERING WOODS CAMP SCREEN -->
+<div id="whisper-camp-screen" class="screen">
+<div class="top-bar">
+    <button class="home-btn" onclick="navHome()">🗺️</button>
+    <div class="top-bar-title">Whispering Woods Camp</div>
+    <div class="stat-pill stat-pill-skill" id="whisper-camp-skill-pill" tabindex="0">
+      <span class="stat-icon" id="whisper-camp-skill-icon">🏗️</span>
+      <span class="skill-pill-lvl" id="whisper-camp-skill-lvl">1</span>
+      <div class="skill-pill-bar"><div class="skill-pill-fill sk-arch" id="whisper-camp-skill-fill" style="height:0%"></div></div>
+      <span class="skill-pill-tip" id="whisper-camp-skill-tip"></span>
+    </div>
+    <div class="stat-pill stat-pill-gold" id="gold-pill-whisper-camp"><span class="stat-val" id="gold-whisper-camp">0</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-whisper-camp">0</span>/<span class="inv-cap-display">50</span></span></div>
+  </div>
+  <div class="top-nav">
+    <button class="nav-btn" onclick="closeWhisperCampScreen()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
+    <button class="nav-btn" onclick="event.stopPropagation();togglePanel('equip')"><span class="nav-btn-icon">⚔️</span><span class="nav-btn-label">EQUIP</span></button>
+  </div>
+  <div class="whisper-camp-body activity-panel">
+    <div class="wb-header">
+      <div class="wb-title-row">
+        <span class="wb-icon">⛺</span>
+        <div>
+          <div class="wb-item-name">Whispering Woods Camp</div>
+          <div class="wb-item-sub" id="whisper-camp-subtitle">Raise the camp with logs</div>
+        </div>
+      </div>
+    </div>
+    <div id="whisper-camp-build-section">
+      <div class="whisper-camp-progress-count" id="whisper-camp-progress">0 / 5 logs</div>
+    </div>
+    <div id="whisper-camp-activity-section" hidden>
+      <div class="store-items" style="margin-bottom:12px">
+        <div class="store-items-title">CAMP STATUS</div>
+        <div class="store-line" style="font-size:12px;color:var(--ui-text-dim)">Upgrade tiers unlock Short, Medium, and Long treks at the adjacent Whispering Woods.</div>
+      </div>
+    </div>
+    <div class="fish-status idle" id="whisper-camp-status">Donate logs to raise the camp frame.</div>
+    <div id="whisper-camp-upgrade-section"></div>
+    <div class="wb-action-area" id="whisper-camp-buttons"></div>
+  </div>
+</div>
+
+<!-- COASTAL DOCKS SCREEN -->
+<div id="coastal-docks-screen" class="screen">
+<div class="top-bar">
+    <button class="home-btn" onclick="navHome()">🗺️</button>
+    <div class="top-bar-title">Coastal Docks</div>
+    <div class="stat-pill stat-pill-skill" id="coastal-docks-skill-pill" tabindex="0">
+      <span class="stat-icon" id="coastal-docks-skill-icon">🏗️</span>
+      <span class="skill-pill-lvl" id="coastal-docks-skill-lvl">1</span>
+      <div class="skill-pill-bar"><div class="skill-pill-fill sk-arch" id="coastal-docks-skill-fill" style="height:0%"></div></div>
+      <span class="skill-pill-tip" id="coastal-docks-skill-tip"></span>
+    </div>
+    <div class="stat-pill stat-pill-gold" id="gold-pill-coastal-docks"><span class="stat-val" id="gold-coastal-docks">0</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-coastal-docks">0</span>/<span class="inv-cap-display">50</span></span></div>
+  </div>
+  <div class="top-nav">
+    <button class="nav-btn" onclick="closeCoastalDocksScreen()"><span class="nav-btn-icon">🗺️</span><span class="nav-btn-label">PLOT</span></button>
+    <button class="nav-btn" onclick="event.stopPropagation();togglePanel('equip')"><span class="nav-btn-icon">⚔️</span><span class="nav-btn-label">EQUIP</span></button>
+  </div>
+  <div class="coastal-docks-body activity-panel">
+    <div class="wb-header">
+      <div class="wb-title-row">
+        <span class="wb-icon">⚓</span>
+        <div>
+          <div class="wb-item-name">Coastal Docks</div>
+          <div class="wb-item-sub" id="coastal-docks-subtitle">Raise the docks with logs</div>
+        </div>
+      </div>
+    </div>
+    <div id="coastal-docks-build-section">
+      <div class="coastal-docks-progress-count" id="coastal-docks-progress">0 / 5 logs</div>
+    </div>
+    <div id="coastal-docks-activity-section" hidden>
+      <div class="store-items" style="margin-bottom:12px">
+        <div class="store-items-title">DOCKS STATUS</div>
+        <div class="store-line" style="font-size:12px;color:var(--ui-text-dim)">Upgrade tiers unlock Short, Medium, and Long treks at the adjacent Sunken Shallows.</div>
+      </div>
+    </div>
+    <div class="fish-status idle" id="coastal-docks-status">Donate logs to raise the dock frame.</div>
+    <div id="coastal-docks-upgrade-section"></div>
+    <div class="wb-action-area" id="coastal-docks-buttons"></div>
   </div>
 </div>
 
@@ -700,6 +788,7 @@
       <div class="store-items-title">POSSIBLE LOGS</div>
       <div id="wc-loot-list"><div class="store-line" style="color:rgba(200,169,110,0.45)">Select a woodland.</div></div>
     </div>
+    <div id="wc-auxiliary-slot" hidden></div>
     <div class="wb-xp-preview" id="wc-xp-preview"></div>
     <div class="fish-status idle" id="wc-status">Tap the tree to chop</div>
     <div class="wb-action-area" id="wc-buttons"></div>
@@ -785,9 +874,11 @@
     <div class="expedition-tier-picker" id="explore-tier-picker"></div>
     <div class="store-items" style="margin-bottom:12px">
       <div class="store-items-title">REQUIREMENTS</div>
-      <div class="expedition-req-row" id="explore-req-row"></div>
+      <div class="expedition-req-row expedition-req-columns" id="explore-req-row"></div>
       <div id="explore-req-submenu" class="explore-req-submenu" hidden></div>
     </div>
+    <div class="wb-action-area" id="explore-buttons"></div>
+    <div class="fish-status idle" id="explore-status">Pack supplies to depart</div>
     <div class="store-items" style="margin-bottom:12px">
       <div class="store-items-title">REWARDS</div>
       <div id="explore-rewards"></div>
@@ -800,8 +891,6 @@
       <div class="store-items-title">SUPER RARE POOL</div>
       <div id="explore-super-rare-pool"></div>
     </div>
-    <div class="fish-status idle" id="explore-status">Pack supplies to depart</div>
-    <div class="wb-action-area" id="explore-buttons"></div>
     </div>
   </div>
 </div>
@@ -843,7 +932,7 @@
       <div id="fp-recipe-list"></div>
     </div>
     <div class="wb-xp-preview" id="fp-xp-preview"></div>
-    <div class="fish-status idle" id="fp-status">Cook raw fish over the hearth</div>
+    <div class="fish-status idle" id="fp-status"></div>
     <div class="wb-action-area" id="fp-buttons"></div>
     <div class="wb-log" id="fp-log"></div>
   </div>
@@ -882,7 +971,7 @@
       <div id="sw-recipe-list"></div>
     </div>
     <div class="wb-xp-preview" id="sw-xp-preview"></div>
-    <div class="sw-status idle" id="sw-status">Ready to spin</div>
+    <div class="sw-status idle" id="sw-status"></div>
     <div class="wb-action-area" id="sw-buttons"></div>
     <div class="wb-log" id="sw-log"></div>
   </div>
@@ -919,7 +1008,7 @@
     <div id="loom-output-row" style="margin-bottom:8px"></div>
     <div id="loom-material-section" style="margin-bottom:12px"></div>
     <div class="wb-xp-preview" id="loom-xp-preview"></div>
-    <div class="sw-status idle" id="loom-status">Turn thread and fiber into fabric</div>
+    <div class="sw-status idle" id="loom-status"></div>
     <div class="wb-action-area" id="loom-buttons"></div>
     <div class="wb-log" id="loom-log"></div>
   </div>
@@ -953,6 +1042,10 @@
         </div>
       </div>
     </div>
+    <div class="store-items" style="margin-bottom:12px">
+      <div class="store-items-title">QUICK TAP DEFAULT</div>
+      <div id="apoth-default-toggle"></div>
+    </div>
     <div class="fire-pit-tab-row">
       <button type="button" class="expedition-tier-btn" id="apoth-tab-identify" onclick="setApothecaryTab('identify')">Identify</button>
       <button type="button" class="expedition-tier-btn" id="apoth-tab-process" onclick="setApothecaryTab('process')">Process</button>
@@ -971,9 +1064,142 @@
       </div>
       <div class="wb-xp-preview" id="apoth-process-xp"></div>
     </div>
-    <div class="sw-status idle" id="botany-status">Ready to identify herbs</div>
+    <div class="sw-status idle" id="botany-status"></div>
     <div class="wb-action-area" id="botany-buttons"></div>
     <div class="wb-log" id="botany-log"></div>
+  </div>
+</div>
+
+<!-- CRAFTING DESK SCREEN -->
+<div id="crafting-desk-screen" class="screen">
+<div class="top-bar">
+    <button class="home-btn" onclick="navHome()">🗺️</button>
+    <div class="top-bar-title">Crafting Desk</div>
+    <div class="stat-pill stat-pill-skill" id="crafting-desk-skill-pill" tabindex="0">
+      <span class="stat-icon" id="crafting-desk-skill-icon">🛠️</span>
+      <span class="skill-pill-lvl" id="crafting-desk-skill-lvl">1</span>
+      <div class="skill-pill-bar"><div class="skill-pill-fill sk-crafting" id="crafting-desk-skill-fill" style="height:0%"></div></div>
+      <span class="skill-pill-tip" id="crafting-desk-skill-tip"></span>
+    </div>
+    <div class="stat-pill stat-pill-gold" id="gold-pill-crafting-desk"><span class="stat-val" id="gold-crafting-desk">0</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-crafting-desk">0</span>/<span class="inv-cap-display">50</span></span></div>
+  </div>
+  <div class="top-nav">
+    <button class="nav-btn" onclick="closeCraftingDeskScreen()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
+    <button class="nav-btn" onclick="event.stopPropagation();togglePanel('equip')"><span class="nav-btn-icon">⚔️</span><span class="nav-btn-label">EQUIP</span></button>
+  </div>
+  <div class="sw-body activity-panel">
+    <div class="wb-header">
+      <div class="wb-title-row">
+        <span class="wb-icon">🛠️</span>
+        <div>
+          <div class="wb-item-name">Crafting Desk</div>
+          <div class="wb-item-sub" id="crafting-desk-subtitle">Combine materials into paste, gear, and more</div>
+        </div>
+      </div>
+    </div>
+    <div class="store-items" style="margin-bottom:12px">
+      <div class="store-items-title">RECIPES</div>
+      <div id="crafting-desk-recipe-list"></div>
+    </div>
+    <div class="wb-xp-preview" id="crafting-desk-xp"></div>
+    <div class="sw-status idle" id="crafting-desk-status"></div>
+    <div class="wb-action-area" id="crafting-desk-buttons"></div>
+    <div class="wb-log" id="crafting-desk-log"></div>
+  </div>
+</div>
+
+<!-- STUDY DESK SCREEN -->
+<div id="study-desk-screen" class="screen">
+<div class="top-bar">
+    <button class="home-btn" onclick="navHome()">🗺️</button>
+    <div class="top-bar-title">Study Desk</div>
+    <div class="stat-pill stat-pill-skill" id="study-skill-pill" tabindex="0">
+      <span class="stat-icon" id="study-skill-icon">📖</span>
+      <span class="skill-pill-lvl" id="study-skill-lvl">1</span>
+      <div class="skill-pill-bar"><div class="skill-pill-fill sk-academia" id="study-skill-fill" style="height:0%"></div></div>
+      <span class="skill-pill-tip" id="study-skill-tip"></span>
+    </div>
+    <div class="stat-pill stat-pill-gold" id="gold-pill-study"><span class="stat-val" id="gold-study">0</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-study">0</span>/<span class="inv-cap-display">50</span></span></div>
+  </div>
+  <div class="top-nav">
+    <button class="nav-btn" onclick="closeStudyDeskScreen()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
+    <button class="nav-btn" onclick="event.stopPropagation();togglePanel('equip')"><span class="nav-btn-icon">⚔️</span><span class="nav-btn-label">EQUIP</span></button>
+  </div>
+  <div class="sw-body activity-panel">
+    <div class="wb-header">
+      <div class="wb-title-row">
+        <span class="wb-icon">📖</span>
+        <div>
+          <div class="wb-item-name">Study Desk</div>
+          <div class="wb-item-sub" id="study-desk-subtitle">Academia skill • books, maps, and artefacts</div>
+        </div>
+      </div>
+    </div>
+    <div class="fire-pit-tab-row">
+      <button type="button" class="expedition-tier-btn active" id="study-tab-books" onclick="setStudyDeskTab('books')">Books</button>
+      <button type="button" class="expedition-tier-btn" id="study-tab-maps" onclick="setStudyDeskTab('maps')">Maps</button>
+      <button type="button" class="expedition-tier-btn" id="study-tab-artefacts" onclick="setStudyDeskTab('artefacts')">Artefacts</button>
+    </div>
+    <div id="study-panel-books" class="fire-pit-panel">
+      <div class="store-items" style="margin-bottom:12px">
+        <div class="store-items-title">BOOKS</div>
+        <div id="study-books-stock"></div>
+      </div>
+      <div class="wb-xp-preview" id="study-desk-xp-preview"></div>
+    </div>
+    <div id="study-panel-maps" class="fire-pit-panel" hidden>
+      <div class="store-items" style="margin-bottom:12px">
+        <div class="store-items-title">MAPS</div>
+        <div id="study-maps-stock"></div>
+      </div>
+    </div>
+    <div id="study-panel-artefacts" class="fire-pit-panel" hidden>
+      <div class="store-items" style="margin-bottom:12px">
+        <div class="store-items-title">ARTEFACT EXAMINATION</div>
+        <div id="study-artefacts-stock"></div>
+      </div>
+      <div class="wb-xp-preview" id="study-artefact-xp-preview"></div>
+    </div>
+    <div class="sw-status idle" id="study-desk-status">Find gathering pages while foraging</div>
+    <div class="wb-action-area" id="study-desk-buttons"></div>
+    <div class="wb-log" id="study-desk-log"></div>
+  </div>
+</div>
+
+<!-- BOOKCASE SCREEN -->
+<div id="bookcase-screen" class="screen">
+<div class="top-bar">
+    <button class="home-btn" onclick="navHome()">🗺️</button>
+    <div class="top-bar-title">Bookcase</div>
+    <div class="stat-pill stat-pill-skill" id="bookcase-skill-pill" tabindex="0">
+      <span class="stat-icon" id="bookcase-skill-icon">📖</span>
+      <span class="skill-pill-lvl" id="bookcase-skill-lvl">1</span>
+      <div class="skill-pill-bar"><div class="skill-pill-fill sk-academia" id="bookcase-skill-fill" style="height:0%"></div></div>
+      <span class="skill-pill-tip" id="bookcase-skill-tip"></span>
+    </div>
+    <div class="stat-pill stat-pill-gold" id="gold-pill-bookcase"><span class="stat-val" id="gold-bookcase">0</span></div>
+    <div class="stat-pill stat-pill-inv" onclick="event.stopPropagation();togglePanel('inv')"><span class="stat-icon-wrap"><span class="stat-icon inv-bag-icon">🎒</span><span class="inv-pickup-badge"></span></span><span class="stat-val"><span id="inv-count-bookcase">0</span>/<span class="inv-cap-display">50</span></span></div>
+  </div>
+  <div class="top-nav">
+    <button class="nav-btn" onclick="closeBookcaseScreen()"><span class="nav-btn-icon">🏠</span><span class="nav-btn-label">HUT</span></button>
+    <button class="nav-btn" onclick="event.stopPropagation();togglePanel('equip')"><span class="nav-btn-icon">⚔️</span><span class="nav-btn-label">EQUIP</span></button>
+  </div>
+  <div class="sw-body activity-panel">
+    <div class="wb-header">
+      <div class="wb-title-row">
+        <span class="wb-icon">📚</span>
+        <div>
+          <div class="wb-item-name">Bookcase</div>
+          <div class="wb-item-sub">Journal rewards from the study desk</div>
+        </div>
+      </div>
+    </div>
+    <div class="store-items" style="margin-bottom:12px">
+      <div class="store-items-title">TABLE OF CONTENTS</div>
+      <div id="bookcase-rewards-stock"></div>
+    </div>
   </div>
 </div>
 
@@ -1032,6 +1258,7 @@
 <script src="data/plot-layout.js"></script>
 <script src="data/resources.js"></script>
 <script src="data/nodes.js"></script>
+<script src="data/foraging-afternoon.js"></script>
 <script src="data/structures.js"></script>
 <script src="data/well.js"></script>
 <script src="data/fire-pit.js"></script>
@@ -1040,17 +1267,25 @@
 <script src="data/barn.js"></script>
 <script src="data/barn-interior.js"></script>
 <script src="data/washing-line.js"></script>
+<script src="data/whisper-camp.js"></script>
+<script src="data/sunken-shallows-items.js"></script>
+<script src="data/coastal-docks.js"></script>
 <script src="data/interior.js"></script>
 <script src="data/skills.js"></script>
+<script src="data/academia.js"></script>
 <script src="data/equipment.js"></script>
 <script src="data/fish.js"></script>
+<script src="data/sunken-shallows-expedition.js"></script>
 <script src="data/exploration.js"></script>
+<script src="data/whisper-woods-expedition.js"></script>
 <script src="data/crafting.js"></script>
 <script src="data/water.js"></script>
 <script src="data/furniture.js"></script>
+<script src="data/crafting-desk.js"></script>
 <script src="data/botany.js"></script>
 <script src="data/farming.js"></script>
 <script src="data/loom.js"></script>
+<script src="data/feather-pockets.js"></script>
 <script src="data/pets.js"></script>
 <script src="js/constants.js"></script>
 <script src="js/data-init.js"></script>
@@ -1069,6 +1304,8 @@
 <script src="js/activity-shared.js"></script>
 <script src="js/activity-fishing.js"></script>
 <script src="js/activity-gathering.js"></script>
+<script src="js/gathering-afternoon.js"></script>
+<script src="js/fae-grove.js"></script>
 <script src="js/activity-mining.js"></script>
 <script src="js/activity-woodcutting.js"></script>
 <script src="js/activity-exploring.js"></script>
@@ -1076,14 +1313,21 @@
 <script src="js/well.js"></script>
 <script src="js/fire-pit.js"></script>
 <script src="js/kiln.js"></script>
+<script src="js/feather-pockets.js"></script>
 <script src="js/barn.js"></script>
 <script src="js/barn-interior.js"></script>
 <script src="js/washing-line.js"></script>
+<script src="js/whisper-camp.js"></script>
+<script src="js/coastal-docks.js"></script>
 <script src="js/farming-plot.js"></script>
 <script src="js/plot-structure-register.js"></script>
 <script src="js/interactions.js"></script>
 <script src="js/botany-table.js"></script>
+<script src="js/crafting-desk.js"></script>
 <script src="js/loom.js"></script>
+<script src="js/study-desk.js"></script>
+<script src="js/bookcase.js"></script>
+<script src="js/forestry-journal.js"></script>
 <script src="js/workbench.js"></script>
 <script src="js/screen-register.js"></script>
 <script src="js/navigation.js"></script>

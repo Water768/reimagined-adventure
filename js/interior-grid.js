@@ -9,8 +9,8 @@ const intCoordEls = {};
 const INT_CELL_PX = 92;
 const INT_WALL_PX = 10;
 const INT_DRAG_ICON = {
-  wardrobe:'🚪', fireplace:'🔥', picture:'🖼️', workbench:'🪚',
-  build:'＋', dogbed:'🛏️', doorway:'🚶', storeroom:'🗄️', tool_store:'🧰', spinningwheel:'🎡', apothecary_table:'⚗️', wonky_loom:'🧵', empty:'',
+  wardrobe:'🚪', fireplace:'🔥', workbench:'🪚',
+  build:'＋', dogbed:'🛏️', doorway:'🚶', storeroom:'🗄️', tool_store:'🧰', spinningwheel:'🎡', apothecary_table:'⚗️', wonky_loom:'🧵', study_desk:'📖', bookcase:'📚', crafting_desk:'🛠️', empty:'',
 };
 let intPanDrag = null;
 let intSwapDrag = null;
@@ -49,6 +49,17 @@ function migrateInteriorBuildSlots(){
   if(!state.interior?.cells) return;
   Object.keys(state.interior.cells).forEach(k=>{
     if(/^build\d+$/.test(state.interior.cells[k])) state.interior.cells[k]='build';
+  });
+}
+
+/** Picture room and Design skill removed — convert saved layouts. */
+function migrateRemoveDeprecatedInteriorRooms(){
+  if(state.interiorLayout){
+    state.interiorLayout=state.interiorLayout.map((k)=>k==='picture'?'build':k);
+  }
+  if(!state.interior?.cells) return;
+  Object.keys(state.interior.cells).forEach((k)=>{
+    if(interiorCellType(state.interior.cells[k])==='picture') state.interior.cells[k]='build';
   });
 }
 
@@ -375,6 +386,7 @@ function getInteriorExpansionSpots(){
 
 function migrateInterior(){
   if(!state.interior) state.interior={ cells:null, buildMode:false, panX:0, panY:0 };
+  migrateRemoveDeprecatedInteriorRooms();
   if(state.interior.buildMode==null) state.interior.buildMode=false;
   if(!state.interior.furnitureRestore) state.interior.furnitureRestore={};
   if(state.interior.panX==null) state.interior.panX=state.interiorPanX||0;
@@ -385,6 +397,8 @@ function migrateInterior(){
   if(state.interior.cells&&Object.keys(state.interior.cells).length){
     migrateInteriorBuildSlots();
     if(typeof migrateApothecaryTable==='function') migrateApothecaryTable();
+    if(typeof migrateStudyDesk==='function') migrateStudyDesk();
+    if(typeof migrateBookcase==='function') migrateBookcase();
     if(!isInteriorConnected(state.interior.cells)){
       const {doorwayKey, roomKeys}=collectInteriorRoomKeys();
       state.interior.cells=buildInteriorStackLayout(roomKeys, doorwayKey);
@@ -833,6 +847,42 @@ function removeInteriorRoom(x,y, opts){
     if(where==='bag') showToast('🧵 Wonky Loom picked up.');
     else if(where==='store') showToast('🧵 Wonky Loom returned to store room (bag full).');
     else showToast('Wonky Loom removed.');
+    return;
+  }
+
+  if(type==='study_desk'){
+    state.interior.cells=next;
+    const fdef=getFurnitureDef(STUDY_DESK_FURNITURE_KEY);
+    const where=returnOneToBagOrStore(STUDY_DESK_FURNITURE_KEY, fdef?.icon||'📖', fdef?.name||'Study Desk');
+    renderInteriorGrid();
+    syncUI();
+    if(where==='bag') showToast('📖 Study Desk picked up.');
+    else if(where==='store') showToast('📖 Study Desk returned to store room (bag full).');
+    else showToast('Study Desk removed.');
+    return;
+  }
+
+  if(type==='crafting_desk'){
+    state.interior.cells=next;
+    const fdef=getFurnitureDef(CRAFTING_DESK_FURNITURE_KEY);
+    const where=returnOneToBagOrStore(CRAFTING_DESK_FURNITURE_KEY, fdef?.icon||'🛠️', fdef?.name||'Crafting Desk');
+    renderInteriorGrid();
+    syncUI();
+    if(where==='bag') showToast('🛠️ Crafting Desk picked up.');
+    else if(where==='store') showToast('🛠️ Crafting Desk returned to store room (bag full).');
+    else showToast('Crafting Desk removed.');
+    return;
+  }
+
+  if(type==='bookcase'){
+    state.interior.cells=next;
+    const fdef=getFurnitureDef(BOOKCASE_FURNITURE_KEY);
+    const where=returnOneToBagOrStore(BOOKCASE_FURNITURE_KEY, fdef?.icon||'📚', fdef?.name||'Bookcase');
+    renderInteriorGrid();
+    syncUI();
+    if(where==='bag') showToast('📚 Bookcase picked up.');
+    else if(where==='store') showToast('📚 Bookcase returned to store room (bag full).');
+    else showToast('Bookcase removed.');
     return;
   }
 
@@ -1329,10 +1379,24 @@ function refreshInteriorCell(cellKey, el, x, y){
     return;
   }
 
-  if(type==='picture'){
-    el.dataset.intKey='picture';
-    el.innerHTML=interiorRemoveBtnHtml(x,y)+'<div class="int-item" style="transform:rotate(-8deg);display:inline-block">🖼️</div><div class="int-label">picture</div>';
-    el.onclick=()=>{ if(intSuppressClick||isInteriorBuildMode()) return; interactPicture(el); };
+  if(type==='study_desk'){
+    renderStudyDeskCellContent(el);
+    const rm=interiorRemoveBtnHtml(x,y);
+    if(rm) el.insertAdjacentHTML('afterbegin', rm);
+    return;
+  }
+
+  if(type==='crafting_desk'){
+    renderCraftingDeskCellContent(el);
+    const rm=interiorRemoveBtnHtml(x,y);
+    if(rm) el.insertAdjacentHTML('afterbegin', rm);
+    return;
+  }
+
+  if(type==='bookcase'){
+    renderBookcaseCellContent(el);
+    const rm=interiorRemoveBtnHtml(x,y);
+    if(rm) el.insertAdjacentHTML('afterbegin', rm);
     return;
   }
 
@@ -1685,6 +1749,67 @@ function onInteriorViewportPointerUp(e){
     handleInteriorCellTap(key, intPanDrag.cell, e);
   }
   intPanDrag=null;
+}
+
+function devHutPlaceableCellValues(maxCells, storeRoomId){
+  const out=[];
+  const seen=new Set();
+  const add=(v)=>{
+    if(out.length>=maxCells||seen.has(v)) return;
+    seen.add(v);
+    out.push(v);
+  };
+  add('doorway');
+  INTERIOR_ROOM_MENU.forEach(typeId=>{
+    if(typeId==='storeroom') add('storeroom:'+storeRoomId);
+    else add(typeId);
+  });
+  ['apothecary_table','wonky_loom','study_desk','bookcase','crafting_desk'].forEach(add);
+  Object.keys(FURNITURE_DEFS).sort().forEach(key=>{
+    if(FURNITURE_DEFS[key].utility) return;
+    const craft=FURNITURE_CRAFTS[key]||Object.values(FURNITURE_CRAFTS).find(f=>(f.furnitureKey||f.id)===key);
+    if(craft?.tier==='barn') return;
+    add('furniture:'+key);
+  });
+  return out.slice(0, maxCells);
+}
+
+function devEnsureArchitectureForFullHut(storeRoomId){
+  const needed=devHutPlaceableCellValues(Number.MAX_SAFE_INTEGER, storeRoomId).length;
+  let lv=getArchitectureLevel();
+  while(getMaxInteriorRoomsAtLevel(lv)<needed&&lv<99) lv++;
+  if(lv>getArchitectureLevel()){
+    state.skills.architecture.level=lv;
+    state.skills.architecture.xp=0;
+    state.skills.architecture.xpToNext=typeof xpForLevel==='function'?xpForLevel(lv):100;
+  }
+  return getMaxInteriorRoomsAtLevel(lv);
+}
+
+function devSetupPlaytestInterior(){
+  migrateInterior();
+  migrateStoreRooms();
+  const srId='sr_0';
+  if(!state.storeRooms) state.storeRooms={};
+  state.storeRooms[srId]=createDefaultStoreRoomData(srId);
+  unpurgeStoreRoomId(srId);
+  if(Array.isArray(state.purgedStoreRoomIds)){
+    state.purgedStoreRoomIds=state.purgedStoreRoomIds.filter(id=>id!==srId);
+  }
+  const maxRooms=devEnsureArchitectureForFullHut(srId);
+  const values=devHutPlaceableCellValues(maxRooms, srId);
+  while(values.length<maxRooms) values.push('empty');
+  const doorway='doorway';
+  const others=values.filter(v=>interiorCellType(v)!=='doorway');
+  state.interior.cells=buildInteriorStackLayout(others, doorway);
+  if(state.interior.furnitureRestore) state.interior.furnitureRestore={};
+  migrateArchitectureRoomBonuses();
+  const count=getInteriorRoomCount();
+  for(let n=ARCH_ROOM_BONUS_FIRST_ROOM;n<=count;n++) state._archRoomBonuses[n]=true;
+  if(typeof closeInteriorBuildOverlays==='function') closeInteriorBuildOverlays();
+  if(typeof updateInteriorBuildUI==='function') updateInteriorBuildUI();
+  renderInteriorGrid();
+  migrateStoreRooms();
 }
 
 function initInteriorGrid(){

@@ -67,7 +67,7 @@ function getKilnMetalActionIds(){
 const KILN_TABS={
   clay:    { id:'clay',    label:'Clay',  actions:['fire_brick'] },
   melting: { id:'melting', label:'Melt',  actions:['molten_glass'] },
-  blow:    { id:'blow',    label:'Blow',  actions:['blow_vial','blow_bowl','blow_bottle'] },
+  blow:    { id:'blow',    label:'Blow',  actions:['blow_vial','blow_bowl','blow_bottle','blow_glass_jar'] },
   metal:   { id:'metal',   label:'Metal', actions:getKilnMetalActionIds() },
 };
 
@@ -140,6 +140,21 @@ const KILN_ACTIONS={
     outputs:[{ key:'glass_bottle', count:1, icon:'🍾', name:'Glass Bottle' }],
     xp:{ fire:12, crafting:30 },
     logOk:'Shaped molten glass into a glass bottle.',
+  },
+  blow_glass_jar:{
+    id:'blow_glass_jar',
+    material:'clay', process:'blow',
+    menu:'blow',
+    label:'Glass jar',
+    quickLabel:'glass jar',
+    requiresMoulds:true,
+    glassblow:true,
+    shardBonus:'air',
+    inputs:[{ key:'molten_glass', count:1 }],
+    skills:{ fire:12, air:12 },
+    outputs:[{ key:'empty_glass_jar', count:1, icon:'🫙', name:'Empty Glass Jar' }],
+    xp:{ fire:10, crafting:22 },
+    logOk:'Shaped molten glass into an empty glass jar.',
   },
   smelt_copper_nails:{
     id:'smelt_copper_nails',
@@ -432,9 +447,11 @@ function getKilnRecipeDisplay(action){
 function getKilnRecipeXpLine(action){
   if(!action?.xp) return '';
   const parts=[];
-  if(action.xp.crafting) parts.push('+'+action.xp.crafting+' Crafting');
-  if(action.xp.metalworking) parts.push('+'+action.xp.metalworking+' Metalworking');
-  if(action.xp.architecture) parts.push('+'+action.xp.architecture+' Architecture');
+  if(action.xp.fire) parts.push('+'+action.xp.fire+' Fire XP');
+  if(action.glassblow&&action.xp.fire) parts.push('+'+action.xp.fire+' Air XP');
+  if(action.xp.crafting) parts.push('+'+action.xp.crafting+' Crafting XP');
+  if(action.xp.metalworking) parts.push('+'+action.xp.metalworking+' Metalworking XP');
+  if(action.xp.architecture) parts.push('+'+action.xp.architecture+' Architecture XP');
   return parts.join(' • ');
 }
 

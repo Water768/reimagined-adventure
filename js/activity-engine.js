@@ -135,7 +135,9 @@ function renderOnceContinuousButtons(opts){
   }
   btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
     +'<button class="wb-btn once" '+(!can?'disabled':'')+' onclick="'+onceOnclick+'">'+onceLabel+'</button>'
-    +'<button class="wb-btn continuous" '+(!can?'disabled':'')+' onclick="'+continuousOnclick+'">CONTINUOUS</button>'
+    +(continuousOnclick
+      ?'<button class="wb-btn continuous" '+(!can?'disabled':'')+' onclick="'+continuousOnclick+'">CONTINUOUS</button>'
+      :'')
     +'</div>'
     +noticeHtml
     +'</div>';
@@ -157,6 +159,19 @@ function renderRecipeSectionPicker(opts){
 
 function renderToggleRecipeSection(title, open, collapsedHtml, listHtml){
   return renderRecipeSectionPicker({ title, open, collapsedHtml, openHtml:listHtml });
+}
+
+function formatSkillXp(amount, skillName){
+  return '+'+(amount|0)+' '+skillName+' XP';
+}
+
+function formatSkillXpJoin(parts){
+  return (parts||[]).filter(Boolean).join(' • ');
+}
+
+function processingActivityStatusText(running, runningText, blockText){
+  if(running) return runningText||'';
+  return blockText||'';
 }
 
 function renderRecipePickerCollapsed(opts){
@@ -181,5 +196,5 @@ function renderRecipePickerCollapsed(opts){
 }
 
 function isTimedActivityActive(){
-  return cook.running||spin.running||loomProcess.running||apothProcess.running||kilnProcess.running||craft.running;
+  return cook.running||spin.running||loomProcess.running||apothProcess.running||craftingDeskProcess.running||kilnProcess.running||craft.running;
 }

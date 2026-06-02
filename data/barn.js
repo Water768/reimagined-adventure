@@ -74,14 +74,30 @@ function isLargeBarn(cfg){
   return cfg?.size==='large';
 }
 
-function isMultiTileBarn(cfg){
-  return isMediumBarn(cfg)||isLargeBarn(cfg);
+function isMultiTileBarn(_cfg){
+  return false;
 }
 
 function getBarnAnimalSlotCount(cfg){
   if(isLargeBarn(cfg)) return typeof BARN_LARGE_ANIMAL_SLOTS==='number'?BARN_LARGE_ANIMAL_SLOTS:4;
   if(isMediumBarn(cfg)) return typeof BARN_MEDIUM_ANIMAL_SLOTS==='number'?BARN_MEDIUM_ANIMAL_SLOTS:2;
   return typeof BARN_SMALL_ANIMAL_SLOTS==='number'?BARN_SMALL_ANIMAL_SLOTS:1;
+}
+
+function getBarnUtilitySlotCount(cfg){
+  if(isLargeBarn(cfg)) return typeof BARN_LARGE_UTILITY_SLOTS==='number'?BARN_LARGE_UTILITY_SLOTS:4;
+  if(isMediumBarn(cfg)) return typeof BARN_MEDIUM_UTILITY_SLOTS==='number'?BARN_MEDIUM_UTILITY_SLOTS:2;
+  return typeof BARN_SMALL_UTILITY_SLOTS==='number'?BARN_SMALL_UTILITY_SLOTS:1;
+}
+
+function getBarnHabitatSlotCount(cfg){
+  if(isLargeBarn(cfg)) return typeof BARN_LARGE_HABITAT_SLOTS==='number'?BARN_LARGE_HABITAT_SLOTS:2;
+  if(isMediumBarn(cfg)) return typeof BARN_MEDIUM_HABITAT_SLOTS==='number'?BARN_MEDIUM_HABITAT_SLOTS:1;
+  return typeof BARN_SMALL_HABITAT_SLOTS==='number'?BARN_SMALL_HABITAT_SLOTS:0;
+}
+
+function isBarnInteriorAvailable(cfg){
+  return !!cfg&&getBarnStage(cfg)==='complete';
 }
 
 function getMediumBarnTypeId(){
@@ -98,10 +114,8 @@ function getBarnPlotTypeId(cfg){
   return 'small_barn_complete';
 }
 
-function getBarnFootprintOffsets(orientation, size){
-  if(size!=='medium'&&size!=='large') return [{ dx:0, dy:0 }];
-  if(orientation==='v') return [{ dx:0, dy:0 }, { dx:0, dy:1 }];
-  return [{ dx:0, dy:0 }, { dx:1, dy:0 }];
+function getBarnFootprintOffsets(_orientation, _size){
+  return [{ dx:0, dy:0 }];
 }
 
 function getWoodUnlockLevelForLog(logKey){
@@ -185,9 +199,9 @@ function getBarnStageLabel(stage, cfg){
   if(stage==='frame') return 'Raise the frame — 200 logs and 200 nails';
   if(stage==='roof') return 'Lay the roof — 50 slate and 50 nails';
   if(stage==='door') return 'Hang the barn door — 50 ashwood and 50 nails';
-  if(isLargeBarn(cfg)) return 'Four animal slots — enter the barn to see your livestock';
-  if(isMediumBarn(cfg)) return 'Two animal slots — adopt, feed, and collect produce';
-  return 'One animal slot — adopt, feed, and collect produce';
+  if(isLargeBarn(cfg)) return 'Four pens · four utilities · edit layout inside to arrange pens, gear, and spacing';
+  if(isMediumBarn(cfg)) return 'Two pens · two utility slots · enter the barn to arrange livestock and gear';
+  return 'One pen · one utility slot — enter the barn to arrange livestock and gear';
 }
 
 function getBarnProgress(cfg){

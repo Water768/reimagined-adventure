@@ -22,7 +22,7 @@ const craft={
 let wbLogPickerOpen=false;
 let wbNailPickerOpen=false;
 let wbFurniturePickerOpen=false;
-const wbFurnitureTierCollapsed={ simple:true, hardwood:true, barn:true, artisan:true, mythical:true };
+const wbFurnitureTierCollapsed={ simple:true, hardwood:true, barn:true, artisan:true, mythical:true, journal:true };
 
 // ── Furniture crafting data ──────────────────────────────────────────
 function getCarpentryLevel(){
@@ -73,6 +73,7 @@ function recipeUsesNails(recipe){
 }
 
 function getRecipeLogsPerAttempt(recipe){
+  if(recipe?.materialOnly) return 0;
   return Math.max(1, recipe?.logsPerAttempt||1);
 }
 
@@ -156,7 +157,20 @@ function renderFurnitureProjectCard(f, opts){
 
 function isFurnitureRecipe(recipeKey){
   const r=RECIPES[recipeKey];
+  return !!(r&&r.tier&&!r.autoInstallShelfSlot&&!r.outputToolKey);
+}
+
+function isStageWorkbenchRecipe(recipeKey){
+  const r=RECIPES[recipeKey];
   return !!(r&&r.tier&&!r.autoInstallShelfSlot);
+}
+
+function isWorkbenchToolRecipe(recipeKey){
+  return !!(typeof WORKBENCH_TOOL_CRAFTS!=='undefined'&&WORKBENCH_TOOL_CRAFTS[recipeKey]);
+}
+
+function getWorkbenchCraftDef(recipeKey){
+  return FURNITURE_CRAFTS[recipeKey]||WORKBENCH_TOOL_CRAFTS?.[recipeKey]||null;
 }
 
 function meetsCarpentryRequirement(recipe){
@@ -192,7 +206,7 @@ function getUncappedCraftChancePct(nailKey){
   const recipe=RECIPES[craft.recipeKey];
   if(!recipe) return 0;
   const logKey=craft.selectedLog;
-  if(isFurnitureRecipe(craft.recipeKey)){
+  if(isStageWorkbenchRecipe(craft.recipeKey)){
     const base=recipe.baseFurnitureChance??10;
     const wood=getWoodModifier(logKey);
     const skill=getFurnitureSkillBonusPct(recipe);
@@ -290,7 +304,7 @@ function calcFurnitureChancePct(recipe, logKey, nailKey){
 
 function getBestAvailableLogKeyForRecipe(recipeKey){
   const recipe=RECIPES[recipeKey];
-  if(!isFurnitureRecipe(recipeKey)) return getBestAvailableLogKey();
+  if(!isStageWorkbenchRecipe(recipeKey)) return getBestAvailableLogKey();
   if(recipe?.requiredLogKey) return recipe.requiredLogKey;
   const listed=getListedWoodsForRecipe(recipe);
   const allowed=getAllowedWoodsForRecipe(recipe);
@@ -305,13 +319,14 @@ function getBestAvailableLogKeyForRecipe(recipeKey){
 function validateFurnitureCraft(recipeKey, logKey){
   const recipe=RECIPES[recipeKey];
   if(!recipe||recipe.autoInstallShelfSlot) return { ok:true };
-  if(!meetsCarpentryRequirement(recipe)){
+  if(!recipe.materialOnly&&!meetsCarpentryRequirement(recipe)){
     return { ok:false, msg:'Need Carpentry Lv '+recipe.requiredCarpentryLevel+'.' };
   }
   if(!meetsCraftingRequirement(recipe)){
     const req=recipe.requiredCraftingLevel||recipe.requiredTailoringLevel;
     return { ok:false, msg:'Need Crafting Lv '+req+'.' };
   }
+  if(!recipe.materialOnly){
   const useLog=recipe.requiredLogKey||logKey;
   if(!isWoodAllowedForRecipe(recipeKey, useLog)){
     const woodName=LOG_TYPES[useLog]?.name||'wood';
@@ -321,6 +336,7 @@ function validateFurnitureCraft(recipeKey, logKey){
   if(itemCountBagAndStore(useLog)<needLogs){
     const woodName=LOG_TYPES[useLog]?.name||useLog;
     return { ok:false, msg:'Need '+needLogs+' '+woodName+(needLogs>1?'':'')+'.' };
+  }
   }
   if(!recipeExtraInputsMet(recipe)){
     const inp=(recipe.extraInputs||[]).find(i=>itemCountBagAndStore(i.key)<Math.max(1,i.qty||1));
@@ -361,7 +377,7 @@ function syncWorkbenchLogDefault(){
     craft.userPickedLog=false;
     return;
   }
-  const best = isFurnitureRecipe(craft.recipeKey)
+  const best = isStageWorkbenchRecipe(craft.recipeKey)
     ? getBestAvailableLogKeyForRecipe(craft.recipeKey)
     : getBestAvailableLogKey();
   if(!best){
@@ -372,7 +388,7 @@ function syncWorkbenchLogDefault(){
     craft.selectedLog = best;
   } else if(logTypeCount(craft.selectedLog) < 1){
     return;
-  } else if(isFurnitureRecipe(craft.recipeKey) && !isWoodAllowedForRecipe(craft.recipeKey, craft.selectedLog)){
+  } else if(isStageWorkbenchRecipe(craft.recipeKey) && !isWoodAllowedForRecipe(craft.recipeKey, craft.selectedLog)){
     craft.selectedLog = best;
     craft.userPickedLog = false;
   }
@@ -382,6 +398,11 @@ function toggleWBFurniturePicker(){
   if(craft.running){ showToast('Stop crafting first.'); return; }
   wbFurniturePickerOpen=!wbFurniturePickerOpen;
   renderWBFurniturePicker();
+}
+
+function syncWBFurnitureTierForSelection(){
+  const def=getWorkbenchCraftDef(craft.recipeKey);
+  if(def?.tier) delete wbFurnitureTierCollapsed[def.tier];
 }
 
 function toggleWBFurnitureTier(tier){
@@ -443,7 +464,7 @@ function nailTypeCount(key){
 }
 
 function getWBLogBonusLabel(){
-  if(isFurnitureRecipe(craft.recipeKey)){
+  if(isStageWorkbenchRecipe(craft.recipeKey)){
     return '+'+getWoodModifier(craft.selectedLog)+'%';
   }
   return '+'+Math.round((LOG_TYPES[craft.selectedLog]?.bonus||0)*100)+'%';
@@ -517,7 +538,7 @@ function renderWBLogPickerPanel(){
   el.classList.add('open');
   const shelfLog=getActiveShelfRequiredLogKey();
   const logLocked=!!shelfLog||(craft.running&&craft.lockLogType);
-  const isFurn=isFurnitureRecipe(craft.recipeKey);
+  const isFurn=isStageWorkbenchRecipe(craft.recipeKey);
   const listed=isFurn?getListedWoodsForRecipe(RECIPES[craft.recipeKey]):null;
   const logs=LOG_TIER_ORDER.filter(k=>!isFurn||listed.includes(k)).map(k=>LOG_TYPES[k]).filter(Boolean);
   const logsHtml=logs.map(t=>{
@@ -667,7 +688,7 @@ function getWBChanceInfo(){
   const recipe=RECIPES[craft.recipeKey];
   if(!recipe) return null;
   const nailKey=getEffectiveCraftNailKey();
-  if(isFurnitureRecipe(craft.recipeKey)){
+  if(isStageWorkbenchRecipe(craft.recipeKey)){
     const breakdown=getFurnitureChanceBreakdown(recipe, craft.selectedLog, nailKey);
     const levelsAbove=Math.max(0, getCarpentryLevel()-recipe.requiredCarpentryLevel);
     return { isFurniture:true, breakdown, skill:breakdown.skill, total:breakdown.total, levelsAbove, failsafe:craftUsesRustyNailFailsafe() };
@@ -686,7 +707,7 @@ function renderWBSkillSummary(){
     el.innerHTML='';
     return;
   }
-  if(info.isFurniture){
+  if(info.isFurniture||isStageWorkbenchRecipe(craft.recipeKey)){
     el.innerHTML=renderWBStaticPick({
       icon:'🪚',
       name:'+'+info.skill+'%',
@@ -860,7 +881,7 @@ function updateWorkbenchSkillPill() {
 
 function openWorkbench() {
   const last=state.lastWorkbenchRecipe;
-  const key=(last&&FURNITURE_CRAFTS[last])?last:'chair';
+  const key=(last&&(FURNITURE_CRAFTS[last]||WORKBENCH_TOOL_CRAFTS?.[last]))?last:'chair';
   openWorkbenchForRecipe(key);
 }
 
@@ -895,7 +916,7 @@ function openWorkbenchForRecipe(recipeKey, options) {
   }
   saveCraftState();
   craft.recipeKey = recipeKey;
-  if(isFurnitureRecipe(recipeKey)) state.lastWorkbenchRecipe=recipeKey;
+  if(isStageWorkbenchRecipe(recipeKey)) state.lastWorkbenchRecipe=recipeKey;
   craft.userPickedLog = false;
   craft.lockLogType = false;
   closeWBMatsPickers();
@@ -932,7 +953,7 @@ function closeWorkbench() {
 }
 
 function getFurnitureProjectStage(recipeKey){
-  const f=FURNITURE_CRAFTS[recipeKey];
+  const f=getWorkbenchCraftDef(recipeKey);
   if(!f) return 0;
   if(recipeKey===craft.recipeKey){
     return craft.complete?f.stages:craft.stage;
@@ -952,7 +973,7 @@ function renderWBFurniturePicker(){
     return;
   }
   el.hidden=false;
-  const cur=FURNITURE_CRAFTS[craft.recipeKey]||FURNITURE_CRAFTS.chair;
+  const cur=getWorkbenchCraftDef(craft.recipeKey)||FURNITURE_CRAFTS.chair;
   const stageNum=getFurnitureProjectStage(craft.recipeKey);
 
   let html='';
@@ -963,10 +984,14 @@ function renderWBFurniturePicker(){
       onclick:'toggleWBFurniturePicker()',
     });
   }else{
+    syncWBFurnitureTierForSelection();
     const tierOrder=Object.keys(FURNITURE_TIERS).sort((a,b)=>(FURNITURE_TIERS[a].order||0)-(FURNITURE_TIERS[b].order||0));
     html+='<div class="wb-furn-pick-panel open">';
     tierOrder.forEach(tier=>{
-      const items=Object.entries(FURNITURE_CRAFTS).filter(([,f])=>f.tier===tier);
+      let items=Object.entries(FURNITURE_CRAFTS).filter(([,f])=>f.tier===tier);
+      if(tier==='journal'&&typeof WORKBENCH_TOOL_CRAFTS!=='undefined'){
+        items=Object.entries(WORKBENCH_TOOL_CRAFTS).filter(([,f])=>f.tier===tier&&isWorkbenchToolRecipeUnlocked(f));
+      }
       if(!items.length) return;
       const woodList=formatTierWoodList(tier);
       const tierOpen=!wbFurnitureTierCollapsed[tier];
@@ -995,7 +1020,11 @@ function renderWBFurniturePicker(){
 
 function selectFurnitureRecipe(recipeKey){
   if(craft.running){ showToast('Stop crafting first.'); return; }
-  if(!FURNITURE_CRAFTS[recipeKey]) return;
+  if(!FURNITURE_CRAFTS[recipeKey]&&!WORKBENCH_TOOL_CRAFTS?.[recipeKey]) return;
+  if(WORKBENCH_TOOL_CRAFTS?.[recipeKey]&&!isWorkbenchToolRecipeUnlocked(WORKBENCH_TOOL_CRAFTS[recipeKey])){
+    showToast('Unlock this recipe at the bookcase first.');
+    return;
+  }
   saveCraftState();
   craft.recipeKey=recipeKey;
   state.lastWorkbenchRecipe=recipeKey;
@@ -1003,6 +1032,7 @@ function selectFurnitureRecipe(recipeKey){
   craft.lockLogType=false;
   loadCraftState(recipeKey);
   syncWorkbenchLogDefault();
+  syncWBFurnitureTierForSelection();
   closeWBMatsPickers();
   wbFurniturePickerOpen=false;
   renderWorkbench();
@@ -1014,7 +1044,7 @@ function renderWorkbench() {
   const nameEl = document.querySelector('#workbench-screen .wb-item-name');
   const subEl = document.getElementById('wb-item-sub');
   const iconEl = document.querySelector('#workbench-screen .wb-icon');
-  const isFurn=isFurnitureRecipe(craft.recipeKey);
+  const isFurn=isStageWorkbenchRecipe(craft.recipeKey);
   if(headerEl) headerEl.hidden=!!isFurn;
   if (nameEl) nameEl.textContent = recipe.name;
   const shelfSlot = recipe.autoInstallShelfSlot;
@@ -1142,7 +1172,7 @@ function renderWBButtons() {
   const shelfSlot = recipe.autoInstallShelfSlot;
   const upgrading = shelfSlot && craft.upgradeShelfSlot === shelfSlot;
   const shelfDone = shelfSlot && isShelfInstalled(shelfSlot, craft.storeRoomId) && !upgrading;
-  const furnCheck=isFurnitureRecipe(craft.recipeKey)?validateFurnitureCraft(craft.recipeKey, craft.selectedLog):{ ok:true };
+  const furnCheck=isStageWorkbenchRecipe(craft.recipeKey)?validateFurnitureCraft(craft.recipeKey, craft.selectedLog):{ ok:true };
   const blocked=!furnCheck.ok;
 
   if (shelfDone && !canUpgradeShelf(shelfSlot, craft.storeRoomId)) {
@@ -1192,7 +1222,7 @@ function selectLog(key) {
     return;
   }
   if(craft.running && craft.lockLogType) return;
-  if(isFurnitureRecipe(craft.recipeKey) && !isWoodAllowedForRecipe(craft.recipeKey, key)){
+  if(isStageWorkbenchRecipe(craft.recipeKey) && !isWoodAllowedForRecipe(craft.recipeKey, key)){
     showToast(LOG_TYPES[key]?.name+' cannot be used for this project.');
     return;
   }
@@ -1242,7 +1272,7 @@ function craftContinuous() {
     craft.selectedLog = logKey;
   }
   const valid=validateFurnitureCraft(craft.recipeKey, craft.selectedLog);
-  if(isFurnitureRecipe(craft.recipeKey) && !valid.ok){
+  if(isStageWorkbenchRecipe(craft.recipeKey) && !valid.ok){
     showToast(valid.msg);
     return;
   }
@@ -1436,6 +1466,9 @@ function collectItem() {
   if (recipe.supplyKey) {
     invAdd(recipe.supplyKey, recipe.icon, recipe.name, 1);
     showToast(recipe.icon + ' ' + recipe.name + ' added to your bag! +' + recipe.xpComplete + ' bonus xp');
+  } else if (recipe.outputToolKey) {
+    invAdd(recipe.outputToolKey, recipe.icon, recipe.name, 1);
+    showToast(recipe.icon + ' ' + recipe.name + ' added to your bag! Equip it from inventory. +' + recipe.xpComplete + ' bonus xp');
   } else if (isFurnitureRecipe(craft.recipeKey)) {
     const key = recipe.furnitureKey || craft.recipeKey;
     invAdd(key, recipe.icon, recipe.name, 1);

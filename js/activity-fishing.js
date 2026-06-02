@@ -393,6 +393,7 @@ function fishAttempt(){
   const body=getCurrentFishingWaterBody();
   const typeCfg=body?WATER_BODY_TYPES[body.type]:WATER_BODY_TYPES.pond;
   state.fishAttempts++;
+  if(typeof tryFishingWetMapPieceDrop==='function') tryFishingWetMapPieceDrop();
   grantXP('water', FISH_ATTEMPT_WATER_XP, null, { keepActivities:true });
   if(body&&!canFishAtBody(body.type)){
     if(tryUnderlevelFishLump(body.type)){

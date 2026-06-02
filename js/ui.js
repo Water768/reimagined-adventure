@@ -186,11 +186,11 @@ function dismissToast(){
   clearTimeout(toastTimer);
   toastTimer=null;
 }
-function showToast(msg){
+function showToast(msg, opts){
   dismissToast();
   const w=document.getElementById('game-wrapper');
   const el=document.createElement('div');
-  el.className='toast';
+  el.className='toast'+(opts?.dim?' dim':'');
   el.textContent=msg;
   w.appendChild(el);
   toastTimer=setTimeout(()=>el.remove(),2200);

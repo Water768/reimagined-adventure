@@ -100,6 +100,7 @@ function renderWoodcutting(){
     }
   }
   if(iconEl) iconEl.textContent='🌲';
+  renderWoodcutAuxiliaryPanel();
   renderWoodcutLootList(woodland?.id);
   if(xpEl){
     const wcXpVals=LOG_TIER_ORDER.map(woodcutXpForLog);
@@ -108,11 +109,25 @@ function renderWoodcutting(){
     const wcXpLine=wcXpMin===wcXpMax
       ?('Each chop: +'+wcXpMin+' Woodcutting')
       :('Each chop: +'+wcXpMin+'–+'+wcXpMax+' Woodcutting');
+    const dupPct=typeof getWoodcutDuplicateLogBonusPct==='function'?getWoodcutDuplicateLogBonusPct(axeDef):0;
+    const journalLines=[];
+    if(typeof isForestryJournalChapterActive==='function'){
+      if(isForestryJournalChapterActive(1)&&dupPct>0){
+        journalLines.push('Journal ch.1: +'+Math.round(dupPct)+'% duplicate log chance (additive)');
+      }
+      if(isForestryJournalChapterActive(3)){
+        journalLines.push('Journal ch.3: '+FORESTRY_CH3_SPECIAL_LEAVES_PCT+'% special leaves on chop');
+      }
+      if(isForestryJournalChapterActive(4)&&typeof isIncineratingAxeEquipped==='function'&&isIncineratingAxeEquipped()){
+        journalLines.push('Incinerating axe: 40% burn for triple Woodcutting XP, Fire XP, and fire shards');
+      }
+    }
     xpEl.innerHTML='<span class="wb-xp-line">'+wcXpLine+'</span>'
       +(axeDef?'<span class="wb-xp-line">'+axeDef.icon+' '+axeDef.name+' active — higher tiers improve rare log chances</span>'
-        +(getToolStoreBonusAxeDef()?'<span class="wb-xp-line">Best axe bonus: '+Math.round(axeDuplicateLogChance(getToolStoreBonusAxeDef().tier)*100)+'% extra log (tool store built)</span>'
+        +(getToolStoreBonusAxeDef()?'<span class="wb-xp-line">Best axe bonus: '+Math.round(axeDuplicateLogChance(getToolStoreBonusAxeDef().tier)*100)+'% duplicate log (tool store built)</span>'
           :'<span class="wb-xp-line">Build a tool store to unlock axe bonuses</span>')
-        :'<span class="wb-xp-line">Equip an axe to your tool store from inventory</span>');
+        :'<span class="wb-xp-line">Equip an axe to your tool store from inventory</span>')
+      +journalLines.map((line)=>'<span class="wb-xp-line">'+line+'</span>').join('');
   }
   const status=document.getElementById('wc-status');
   if(status){

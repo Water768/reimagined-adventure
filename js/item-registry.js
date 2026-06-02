@@ -271,8 +271,16 @@ function buildItemRegistry() {
   if (typeof AXE_DEFS !== 'undefined') {
     AXE_DEFS.forEach((d) => reg({ ...d, category: 'tool', stackable: false }));
   }
+  if (typeof FORESTRY_JOURNAL_ITEMS !== 'undefined') {
+    Object.values(FORESTRY_JOURNAL_ITEMS).forEach((d) => reg({ ...d, category: 'herb' }));
+  }
   if (typeof BAG_DEFS !== 'undefined') {
     BAG_DEFS.forEach((d) => reg({ ...d, category: 'bag', stackable: false }));
+  }
+  if (typeof EQUIPPABLE !== 'undefined') {
+    Object.entries(EQUIPPABLE).forEach(([key, d]) =>
+      reg({ key, icon: d.icon, name: d.name, category: 'utility', stackable: false })
+    );
   }
   if (typeof FURNITURE_DEFS !== 'undefined') {
     Object.values(FURNITURE_DEFS).forEach((d) => reg({ ...d, category: 'furniture' }));
@@ -296,8 +304,27 @@ function buildItemRegistry() {
   if (typeof SHELF_RECIPES !== 'undefined') {
     Object.entries(SHELF_RECIPES).forEach(([id, r]) => reg({ key: id, icon: r.icon, name: r.name, category: 'furniture' }));
   }
+  if (typeof ACADEMIA_PAGE_ITEMS !== 'undefined') {
+    Object.values(ACADEMIA_PAGE_ITEMS).forEach((d) => reg({ ...d, category: 'academia', tags: ['page'] }));
+  }
+  if (typeof ACADEMIA_MAP_PIECE_ITEMS !== 'undefined') {
+    Object.values(ACADEMIA_MAP_PIECE_ITEMS).forEach((d) => reg({ ...d, category: 'academia', tags: ['map_piece'], stackable: false }));
+  }
   if (typeof BOTANY_ITEMS !== 'undefined') {
     Object.values(BOTANY_ITEMS).forEach((d) => reg({ ...d, category: 'herb' }));
+  }
+  if (typeof FORAGING_AFTERNOON_ITEMS !== 'undefined') {
+    Object.values(FORAGING_AFTERNOON_ITEMS).forEach((d) =>
+      reg({ ...d, category: d.category || 'gather', stackable: d.stackable !== false })
+    );
+  }
+  if (typeof CRAFTING_DESK_MATERIALS !== 'undefined') {
+    Object.values(CRAFTING_DESK_MATERIALS).forEach((d) => reg({ ...d, category: d.category || 'material' }));
+  }
+  if (typeof CRAFTING_DESK_RECIPES !== 'undefined') {
+    Object.values(CRAFTING_DESK_RECIPES).forEach((r) => {
+      reg({ key: r.outputKey, icon: r.icon, name: r.label, category: 'crafted' });
+    });
   }
   if (typeof BOTANY_CROP_DEFS !== 'undefined') {
     Object.values(BOTANY_CROP_DEFS).forEach((d) => reg({ ...d, category: 'crop' }));
@@ -368,8 +395,21 @@ function buildItemRegistry() {
   if (typeof NAIL_TYPES !== 'undefined') {
     Object.entries(NAIL_TYPES).forEach(([key, d]) => reg({ key, icon: d.icon, name: d.name, category: 'material' }));
   }
-  if (typeof EQUIPPABLE !== 'undefined') {
-    Object.entries(EQUIPPABLE).forEach(([key, d]) => reg({ key, icon: d.icon, name: d.name, category: 'tool', stackable: false }));
+  if (typeof WHISPER_WOODS_EXPEDITION_ITEMS !== 'undefined') {
+    Object.values(WHISPER_WOODS_EXPEDITION_ITEMS).forEach((d) => reg({ ...d, category: 'expedition' }));
+  }
+  if (typeof WHISPERING_WOODS_MAP_FRAGMENT_ITEMS !== 'undefined') {
+    Object.values(WHISPERING_WOODS_MAP_FRAGMENT_ITEMS).forEach((d) =>
+      reg({ ...d, category: 'progression', tags: ['map_fragment'], stackable: false })
+    );
+  }
+  if (typeof SUNKEN_SHALLOWS_MATERIAL_ITEMS !== 'undefined') {
+    Object.values(SUNKEN_SHALLOWS_MATERIAL_ITEMS).forEach((d) => reg({ ...d, category: d.category || 'material' }));
+  }
+  if (typeof SHALLOWS_MAP_FRAGMENT_ITEMS !== 'undefined') {
+    Object.values(SHALLOWS_MAP_FRAGMENT_ITEMS).forEach((d) =>
+      reg({ ...d, category: 'progression', tags: ['map_fragment'], stackable: false })
+    );
   }
   if (typeof AXE_DEFS !== 'undefined') {
     AXE_DEFS.forEach((a) => reg({ key: a.key, icon: a.icon, name: a.name, category: 'tool', stackable: false }));
@@ -392,10 +432,16 @@ function buildItemRegistry() {
     });
   }
 
+  registerItemAlias('shed_antler_piece', 'shed_glowing_antler_piece');
+  registerItemAlias('hardwood_chair', 'crafting_desk');
+  registerItemAlias('waterproof_mortar', 'waterproof_paste');
+  registerItemAlias('simple_thread', 'thread_basic');
   registerItemAlias('mackerel', 'raw_mackerel');
   registerItemAlias('rock', 'stone');
   registerItemAlias('flint', 'brick');
   registerItemAlias('desk', 'apothecary_table');
+  registerItemAlias('table', 'study_desk');
+  registerItemAlias('bookshelf', 'bookcase');
   registerItemAlias('iron nails', 'iron');
   registerItemAlias('Iron Nails', 'iron');
   registerItemAlias('iron nail', 'iron');

@@ -13,9 +13,8 @@ const SKILL_META={
   cooking:  {icon:'🍳',name:'Cooking',    color:'#e88030', blurb:'Prepare meals at the hearth and campfire.'},
   botany:   {icon:'🌱',name:'Botany',     color:'#58a868', blurb:'Grow, prepare, and craft with plants and fibers.'},
   husbandry:{icon:'🐾',name:'Husbandry', color:'#d08028', blurb:'Care for animals and companions.'},
-  design:   {icon:'🎨',name:'Design',     color:'#d040d0', blurb:'Decorate and refine your home.'},
   exploration:{icon:'🧭',name:'Exploration',color:'#a080e0', blurb:'Expand the edges of your plot.'},
-  knowledge:{icon:'📖',name:'Knowledge',  color:'#6890c8', blurb:'Study, learn, and understand the world around you.'},
+  academia:{icon:'📖',name:'Academia',  color:'#6890c8', blurb:'Study, learn, and understand the world around you.'},
   magic:    {icon:'✨',name:'Magic',      color:'#9040c0', blurb:'Channel arcane power — pocket shards will matter later.'},
   air:      {icon:'🌬️',name:'Air',        color:'#70b8d8', blurb:'Harness wind and sky — your air affinity grows with the breeze.'},
   earth:    {icon:'🪨',name:'Earth',      color:'#8a6840', blurb:'Root yourself in stone and soil — earth affinity deepens with the land.'},
@@ -26,6 +25,6 @@ const SKILL_META={
 const SKILL_CATEGORIES=[
   { id:'collecting', label:'Collecting', skills:['woodcut','foraging','fishing','mining'] },
   { id:'crafting', label:'Crafting', skills:['carpentry','metalworking','crafting','architecture','cooking','botany'] },
-  { id:'character', label:'Character', skills:['husbandry','design','exploration','knowledge','magic'] },
+  { id:'character', label:'Character', skills:['husbandry','exploration','academia','magic'] },
   { id:'affinities', label:'Affinities', skills:['air','earth','fire','water'] },
 ];

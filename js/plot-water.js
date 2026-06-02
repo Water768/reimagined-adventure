@@ -277,7 +277,6 @@ function getWaterBodySurface(bodyId){
 }
 
 function computeBarnBodies(){
-  if(typeof pruneAllMultiTileBarnFootprints==='function') pruneAllMultiTileBarnFootprints();
   const bodies={};
   const instanceToBody={};
   let nextId=1;

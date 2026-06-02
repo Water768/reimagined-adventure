@@ -173,18 +173,8 @@
       if (typeof updateBarnCells === 'function') updateBarnCells();
     },
     renderCell: (cell, slot, def, x, y, editMode) => {
-      const cfg = typeof getBarnConfig === 'function' ? getBarnConfig(slot.instanceId) : null;
-      if (cfg?.size === 'medium' || cfg?.size === 'large') {
-        cell.classList.add('cell-barn-base');
-        if (typeof isBarnAnchorCell === 'function' && isBarnAnchorCell(x, y, slot.instanceId)) {
-          cell.dataset.barnAnchor = '1';
-        } else {
-          delete cell.dataset.barnAnchor;
-        }
-        cell.innerHTML = buildBarnBaseCellHtml();
-        return cell;
-      }
       cell.classList.add('cell-barn');
+      delete cell.dataset.barnAnchor;
       cell.innerHTML = buildBarnCellHtml(slot, def, editMode);
       return cell;
     },
@@ -239,6 +229,86 @@
     screenId: 'washing-line-screen',
     closeScreen: () => {
       if (typeof closeWashingLineScreen === 'function') closeWashingLineScreen();
+    },
+  });
+
+  registerPlotStructure('whisper_camp', {
+    defaultConfig: () => ({
+      logs: 0,
+      complete: false,
+      freePlaced: false,
+      campTier: 0,
+    }),
+    clearActive: (instanceId) => {
+      if (typeof setActiveWhisperCamp === 'function' && activeWhisperCampInstanceId === instanceId) {
+        setActiveWhisperCamp(null);
+      }
+    },
+    onRemove: (slot) => {
+      if (typeof setActiveWhisperCamp === 'function' && activeWhisperCampInstanceId === slot.instanceId) {
+        setActiveWhisperCamp(null);
+        if (currentScreen === 'whisper-camp-screen' && typeof closeWhisperCampScreen === 'function') {
+          closeWhisperCampScreen();
+        }
+      }
+    },
+    migrate: () => {
+      if (typeof migrateWhisperCamp === 'function') migrateWhisperCamp();
+    },
+    updateCells: () => {
+      if (typeof updateWhisperCampCells === 'function') updateWhisperCampCells();
+    },
+    renderCell: (cell, slot, def, x, y, editMode) => {
+      cell.classList.add('cell-whisper-camp');
+      cell.innerHTML = buildWhisperCampCellHtml(slot, def, editMode);
+      return cell;
+    },
+    onCellTap: (e, cell, slot) => {
+      if (typeof handleWhisperCampCellTap === 'function') handleWhisperCampCellTap(e, cell, slot);
+    },
+    screenId: 'whisper-camp-screen',
+    closeScreen: () => {
+      if (typeof closeWhisperCampScreen === 'function') closeWhisperCampScreen();
+    },
+  });
+
+  registerPlotStructure('coastal_docks', {
+    defaultConfig: () => ({
+      logs: 0,
+      complete: false,
+      freePlaced: false,
+      campTier: 0,
+    }),
+    clearActive: (instanceId) => {
+      if (typeof setActiveCoastalDocks === 'function' && activeCoastalDocksInstanceId === instanceId) {
+        setActiveCoastalDocks(null);
+      }
+    },
+    onRemove: (slot) => {
+      if (typeof setActiveCoastalDocks === 'function' && activeCoastalDocksInstanceId === slot.instanceId) {
+        setActiveCoastalDocks(null);
+        if (currentScreen === 'coastal-docks-screen' && typeof closeCoastalDocksScreen === 'function') {
+          closeCoastalDocksScreen();
+        }
+      }
+    },
+    migrate: () => {
+      if (typeof migrateCoastalDocks === 'function') migrateCoastalDocks();
+    },
+    updateCells: () => {
+      if (typeof updateCoastalDocksCells === 'function') updateCoastalDocksCells();
+    },
+    renderCell: (cell, slot, def, x, y, editMode) => {
+      cell.classList.add('cell-coastal-docks');
+      cell.innerHTML = buildCoastalDocksCellHtml(slot, def, editMode);
+      return cell;
+    },
+    onCellTap: (e, cell, slot) => {
+      if (typeof handleCoastalDocksCellTap === 'function') handleCoastalDocksCellTap(e, cell, slot);
+    },
+    screenId: 'coastal-docks-screen',
+    closeScreen: () => {
+      if (typeof closeCoastalDocksScreen === 'function') closeCoastalDocksScreen();
     },
   });
 

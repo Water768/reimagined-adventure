@@ -25,6 +25,7 @@ const LOOM_RECIPE_SECTIONS=[
   { label:'CLOTH', keys:['simple_cloth','silk_cloth','linen'] },
   { label:'BANDAGES', keys:['clean_bandage'] },
   { label:'BAGS', keys:['scrappy_pouch'] },
+  { label:'FEATHER POCKETS', keys:['feather_pouch_simple','feather_pouch_silk','feather_pouch_linen'] },
   { label:'NETS', keys:['net_basic','net_rope','net_weighted','net_reinforced','net_fine','net_heavy'] },
 ];
 
@@ -92,6 +93,52 @@ const LOOM_RECIPES={
     ],
     requiredCraftingLevel:8,
     baseSuccess:0.56,
+    xpSuccess:LOOM_WEAVE_XP_SUCCESS,
+    xpFail:LOOM_WEAVE_XP_FAIL,
+  },
+  feather_pouch_simple:{
+    id:'feather_pouch_simple',
+    label:'Simple Feather Pouch (×10)',
+    icon:'🪶',
+    outputKey:'feather_pouch_simple',
+    outputQty:10,
+    inputs:[
+      { key:'simple_cloth', qty:10 },
+      { key:'feathers', qty:500 },
+    ],
+    requiredCraftingLevel:5,
+    baseSuccess:0.58,
+    xpSuccess:LOOM_WEAVE_XP_SUCCESS,
+    xpFail:LOOM_WEAVE_XP_FAIL,
+  },
+  feather_pouch_silk:{
+    id:'feather_pouch_silk',
+    label:'Silk Feather Pouch (×10)',
+    icon:'🪶',
+    outputKey:'feather_pouch_silk',
+    outputQty:10,
+    inputs:[
+      { key:'silk_cloth', qty:10 },
+      { key:'feathers', qty:1500 },
+    ],
+    requiredCraftingLevel:12,
+    baseSuccess:0.55,
+    xpSuccess:LOOM_WEAVE_XP_SUCCESS,
+    xpFail:LOOM_WEAVE_XP_FAIL,
+  },
+  feather_pouch_linen:{
+    id:'feather_pouch_linen',
+    label:'Linen Feather Satchel (×10)',
+    icon:'🪶',
+    outputKey:'feather_pouch_linen',
+    outputQty:10,
+    inputs:[
+      { key:'linen', qty:10 },
+      { key:'feathers', qty:4000 },
+    ],
+    requiredCraftingLevel:20,
+    lockedOnWonkyLoom:true,
+    baseSuccess:0.52,
     xpSuccess:LOOM_WEAVE_XP_SUCCESS,
     xpFail:LOOM_WEAVE_XP_FAIL,
   },
@@ -184,6 +231,10 @@ function getFabricItemDef(key){
 
 function getLoomOutputDef(key){
   if(typeof FISHING_NET_BY_KEY!=='undefined'&&FISHING_NET_BY_KEY[key]) return FISHING_NET_BY_KEY[key];
+  if(typeof getFeatherPocketDef==='function'){
+    const fp=getFeatherPocketDef(key);
+    if(fp) return { key:fp.key, icon:fp.icon, name:fp.name };
+  }
   return getFabricItemDef(key)||(typeof getBagItemDef==='function'?getBagItemDef(key):null);
 }
 
@@ -218,6 +269,7 @@ function loomInputMaterialName(opt){
 }
 
 function calcLoomSuccess(recipe, inputOpt){
+  if(recipe?.outputKey&&typeof isFeatherPocketKey==='function'&&isFeatherPocketKey(recipe.outputKey)) return 1;
   if(recipe?.outputKey&&typeof BAG_BY_KEY!=='undefined'&&BAG_BY_KEY[recipe.outputKey]) return 1;
   if(inputOpt?.key==='thread_enhanced') return 1;
   const lvl=Number(state.skills.crafting?.level)||1;

@@ -16,6 +16,9 @@ const WOOD_ALLOW={
 const FURNITURE_UTILITY_TAGLINES={
   apothecary_table:'processes herbs',
   wonky_loom:'used to make textiles',
+  study_desk:'used to study academia',
+  bookcase:'manage journal rewards',
+  crafting_desk:'crafts items',
 };
 
 function furnitureUtilityTagline(key){
@@ -32,6 +35,7 @@ const FURNITURE_TIERS={
   hardwood:{ label:'Hardwood', order:3, code:'H' },
   artisan:{ label:'Artisan', order:4, code:'A' },
   mythical:{ label:'Mythical', order:5, code:'M' },
+  journal:{ label:'Journal Rewards', order:5.5, code:'J' },
   barn:{ label:'Barn furniture', order:6, code:'B', subtitle:'Placeable in large barn' },
 };
 
@@ -61,13 +65,13 @@ const FURNITURE_CRAFTS={
     furnitureKey:'chair', skill:'carpentry',
     nailsPerAttempt:10, xpFail:2, xpStage:15, xpComplete:50, completeLabel:'chair',
   },
-  bookshelf:{
-    id:'bookshelf', name:'Bookshelf', icon:'📚', tier:'simple',
+  bookcase:{
+    id:'bookcase', name:'Bookcase', icon:'📚', tier:'simple',
     requiredCarpentryLevel:5, stages:4, baseFurnitureChance:55,
     allowedWoods:'all',
-    description:'A rough wooden shelf hammered together by hand.',
-    furnitureKey:'bookshelf', skill:'carpentry',
-    nailsPerAttempt:10, xpFail:2, xpStage:12, xpComplete:40, completeLabel:'bookshelf',
+    description:'A rough wooden shelf for journals and their hard-won rewards.',
+    furnitureKey:'bookcase', skill:'carpentry', utility:true,
+    nailsPerAttempt:10, xpFail:2, xpStage:12, xpComplete:40, completeLabel:'bookcase',
   },
   bucket:{
     id:'bucket', name:'Bucket', icon:'🪣', tier:'simple',
@@ -77,13 +81,13 @@ const FURNITURE_CRAFTS={
     skill:'carpentry',
     nailsPerAttempt:10, xpFail:1, xpStage:5, xpComplete:25, completeLabel:'bucket',
   },
-  table:{
-    id:'table', name:'Table', icon:'🍽️', tier:'simple',
+  study_desk:{
+    id:'study_desk', name:'Study Desk', icon:'📖', tier:'simple',
     requiredCarpentryLevel:8, stages:4, baseFurnitureChance:45,
     allowedWoods:'all',
-    description:'A sturdy flat surface for meals and work.',
-    furnitureKey:'table', skill:'carpentry',
-    nailsPerAttempt:10, xpFail:2, xpStage:14, xpComplete:55, completeLabel:'table',
+    description:'A sturdy desk for books, maps, and curious finds.',
+    furnitureKey:'study_desk', skill:'carpentry', utility:true,
+    nailsPerAttempt:10, xpFail:2, xpStage:14, xpComplete:55, completeLabel:'study desk',
   },
   // ── Former home-made utility (now simple tier) ──
   wonky_loom:{
@@ -103,13 +107,13 @@ const FURNITURE_CRAFTS={
     nailsPerAttempt:10, xpFail:2, xpStage:16, xpComplete:65, completeLabel:'apothecary table',
   },
   // ── Hardwood tier (starts Lv 20) ──
-  hardwood_chair:{
-    id:'hardwood_chair', name:'Hardwood Chair', icon:'🪑', tier:'hardwood',
+  crafting_desk:{
+    id:'crafting_desk', name:'Crafting Desk', icon:'🛠️', tier:'hardwood',
     requiredCarpentryLevel:20, stages:4, baseFurnitureChance:35,
     allowedWoods:'hardwood_plus',
-    description:'A solid chair built from proper hardwood stock.',
-    furnitureKey:'hardwood_chair', skill:'carpentry',
-    nailsPerAttempt:10, xpFail:2, xpStage:16, xpComplete:65, completeLabel:'chair',
+    description:'A sturdy desk for mixing pastes, gear, and odd workshop crafts.',
+    furnitureKey:'crafting_desk', skill:'carpentry', utility:true,
+    nailsPerAttempt:10, xpFail:2, xpStage:16, xpComplete:65, completeLabel:'crafting desk',
   },
   hardwood_bookcase:{
     id:'hardwood_bookcase', name:'Hardwood Bookcase', icon:'📚', tier:'hardwood',

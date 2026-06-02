@@ -167,6 +167,26 @@ function plotStructureCellSig(instanceId, behavior){
     return 'wl:'+(c.logs|0)+':'+(c.rope|0)+':'+(c.complete?1:0)+':'+(c.improved?1:0)
       +':'+(vis?.stage||'')+':'+(vis?.icon||'');
   }
+  if(behavior==='whisper_camp'){
+    const c=typeof getWhisperCampConfig==='function'?getWhisperCampConfig(instanceId):cfg;
+    if(!c) return 'wc:';
+    const found=typeof findPlotCoordForInstanceId==='function'?findPlotCoordForInstanceId(instanceId):null;
+    const slot=found?.slot;
+    const tier=typeof getWhisperCampTierFromSlot==='function'&&slot
+      ?getWhisperCampTierFromSlot(slot,c)
+      :Math.max(c.campTier|0, state.whisperCampTier|0);
+    return 'wc:'+(c.logs|0)+':'+(c.complete?1:0)+':'+(tier|0)+':'+(slot?.typeId||'');
+  }
+  if(behavior==='coastal_docks'){
+    const c=typeof getCoastalDocksConfig==='function'?getCoastalDocksConfig(instanceId):cfg;
+    if(!c) return 'cd:';
+    const found=typeof findPlotCoordForInstanceId==='function'?findPlotCoordForInstanceId(instanceId):null;
+    const slot=found?.slot;
+    const tier=typeof getCoastalDocksTierFromSlot==='function'&&slot
+      ?getCoastalDocksTierFromSlot(slot,c)
+      :Math.max(c.campTier|0, state.coastalDocksTier|0);
+    return 'cd:'+(c.logs|0)+':'+(c.complete?1:0)+':'+(tier|0)+':'+(slot?.typeId||'');
+  }
   return '';
 }
 

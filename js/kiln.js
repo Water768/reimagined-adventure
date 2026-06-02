@@ -866,15 +866,9 @@ function kilnRecipeInputLinesHtml(action, lineClass){
   }).join('');
 }
 
-function kilnRecipeRewardLine(action){
-  return getKilnRecipeXpLine(action);
-}
-
 function kilnRecipeXpPreview(action){
   if(!action) return '';
-  const verb=action.menu==='melting'?'Melt':action.menu==='blow'?'Blow':action.menu==='metal'?'Smelt':'Fire';
-  const xp=getKilnRecipeXpLine(action);
-  return verb+': '+(xp||'No XP listed');
+  return getKilnRecipeXpLine(action)||'No XP listed';
 }
 
 function kilnRecipeUiBlockMessage(check){
@@ -951,7 +945,6 @@ function renderKilnMetalRecipePickerList(tierId){
       +'<span class="wb-mat-info">'
       +kilnRecipeTitleHtml(action)
       +kilnRecipeInputLinesHtml(action, 'wb-mat-stock')
-      +'<span class="wb-mat-stock" style="color:var(--ui-text-dim)">'+kilnRecipeRewardLine(action)+'</span>'
       +'</span>'
       +kilnSkillLevelBadges(action)
       +'</div>';
@@ -980,8 +973,6 @@ function renderKilnMetalTabPanel(tab){
       +'<div class="wb-mat-pick-body'+bodySkillCls+'">'
       +kilnRecipeTitleHtml(action)
       +inputLines
-      +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+kilnRecipeRewardLine(action)+'</span>'
-      +(uiBlock?'<span class="wb-mat-pick-name" style="font-size:11px;color:rgba(255,110,110,0.92)">'+uiBlock+'</span>':'')
       +'</div>'
       +skillBadges
       +'<span class="wb-log-pick-chevron">▾</span>'
@@ -991,11 +982,7 @@ function renderKilnMetalTabPanel(tab){
   }
   el.innerHTML=renderKilnMetalTierRowHtml()+recipesHtml;
   const xpEl=document.getElementById('kiln-xp-preview-'+tab);
-  if(xpEl){
-    let html='<span class="wb-xp-line">'+kilnRecipeXpPreview(action)+'</span>';
-    if(uiBlock) html+='<span class="wb-xp-line">'+uiBlock+'</span>';
-    xpEl.innerHTML=html;
-  }
+  if(xpEl) xpEl.innerHTML='<span class="wb-xp-line">'+kilnRecipeXpPreview(action)+'</span>';
 }
 
 function renderKilnRecipePickerList(tab){
@@ -1010,7 +997,6 @@ function renderKilnRecipePickerList(tab){
       +'<span class="wb-mat-info">'
       +kilnRecipeTitleHtml(action)
       +kilnRecipeInputLinesHtml(action, 'wb-mat-stock')
-      +'<span class="wb-mat-stock" style="color:var(--ui-text-dim)">'+kilnRecipeRewardLine(action)+'</span>'
       +'</span>'
       +kilnSkillLevelBadges(action)
       +'</div>';
@@ -1044,8 +1030,6 @@ function renderKilnTabPanel(tab){
       +'<div class="wb-mat-pick-body'+bodySkillCls+'">'
       +kilnRecipeTitleHtml(action)
       +inputLines
-      +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+kilnRecipeRewardLine(action)+'</span>'
-      +(uiBlock?'<span class="wb-mat-pick-name" style="font-size:11px;color:rgba(255,110,110,0.92)">'+uiBlock+'</span>':'')
       +'</div>'
       +skillBadges
       +'</div>';
@@ -1055,8 +1039,6 @@ function renderKilnTabPanel(tab){
       +'<div class="wb-mat-pick-body'+bodySkillCls+'">'
       +kilnRecipeTitleHtml(action)
       +inputLines
-      +'<span class="wb-mat-pick-name" style="font-size:11px;color:var(--ui-text-dim)">'+kilnRecipeRewardLine(action)+'</span>'
-      +(uiBlock?'<span class="wb-mat-pick-name" style="font-size:11px;color:rgba(255,110,110,0.92)">'+uiBlock+'</span>':'')
       +'</div>'
       +skillBadges
       +'<span class="wb-log-pick-chevron">▾</span>'
@@ -1066,11 +1048,7 @@ function renderKilnTabPanel(tab){
   }
 
   const xpEl=document.getElementById('kiln-xp-preview-'+tab);
-  if(xpEl){
-    let html='<span class="wb-xp-line">'+kilnRecipeXpPreview(action)+'</span>';
-    if(uiBlock) html+='<span class="wb-xp-line">'+uiBlock+'</span>';
-    xpEl.innerHTML=html;
-  }
+  if(xpEl) xpEl.innerHTML='<span class="wb-xp-line">'+kilnRecipeXpPreview(action)+'</span>';
 }
 
 function kilnActionVerb(tab){
@@ -1092,7 +1070,7 @@ function renderKilnActivityButtons(){
   const uiBlock=kilnRecipeUiBlockMessage(check);
   if(statusEl){
     if(kilnProcess.running&&kilnTabHasContinuousRecipes(kilnTab)) statusEl.textContent=kilnContinuousStatusLabel(kilnTab);
-    else statusEl.textContent=uiBlock||blockMsg||'Ready';
+    else statusEl.textContent=uiBlock||blockMsg||'';
     statusEl.classList.toggle('idle',!kilnProcess.running);
   }
   btnEl.hidden=false;

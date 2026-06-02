@@ -24,6 +24,8 @@ const STRUCTURE_COMPLETE_BONUS = {
   washing_line_frame: { typeId: 'washing_line', label: 'Washing Line', icon: '🪵', milestone: 'Washing line frame raised' },
   washing_line: { typeId: 'washing_line', label: 'Washing Line', icon: '🧺', milestone: 'Washing line threaded' },
   washing_line_improved: { typeId: 'improved_washing_line', label: 'Washing Line', icon: '🧺', milestone: 'Washing line upgraded' },
+  whisper_camp: { typeId: 'whisper_camp', label: 'Whispering Woods Camp', icon: '⛺', milestone: 'Whispering Woods Camp raised' },
+  coastal_docks: { typeId: 'coastal_docks', label: 'Coastal Docks', icon: '⚓', milestone: 'Coastal Docks raised' },
 };
 
 function structureMaterialUnlockLevel(resourceKey){

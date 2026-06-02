@@ -109,6 +109,48 @@
     },
   });
 
+  registerScreen('crafting-desk-screen', {
+    kind: 'hut-overlay',
+    goldId: 'gold-crafting-desk',
+    invCountId: 'inv-count-crafting-desk',
+    skillPrefix: 'crafting-desk',
+    skillResolver: () => 'crafting',
+    closeFn: () => {
+      if (typeof closeCraftingDeskScreen === 'function') closeCraftingDeskScreen();
+    },
+    onFlushScreen: () => {
+      if (typeof renderCraftingDeskScreen === 'function') renderCraftingDeskScreen();
+    },
+  });
+
+  registerScreen('study-desk-screen', {
+    kind: 'hut-overlay',
+    goldId: 'gold-study',
+    invCountId: 'inv-count-study',
+    skillPrefix: 'study',
+    skillResolver: () => 'academia',
+    closeFn: () => {
+      if (typeof closeStudyDeskScreen === 'function') closeStudyDeskScreen();
+    },
+    onFlushScreen: () => {
+      if (typeof renderStudyDeskScreen === 'function') renderStudyDeskScreen();
+    },
+  });
+
+  registerScreen('bookcase-screen', {
+    kind: 'hut-overlay',
+    goldId: 'gold-bookcase',
+    invCountId: 'inv-count-bookcase',
+    skillPrefix: 'bookcase',
+    skillResolver: () => 'academia',
+    closeFn: () => {
+      if (typeof closeBookcaseScreen === 'function') closeBookcaseScreen();
+    },
+    onFlushScreen: () => {
+      if (typeof renderBookcaseScreen === 'function') renderBookcaseScreen();
+    },
+  });
+
   registerScreen('pets-screen', {
     kind: 'hut-overlay',
     goldId: 'gold-pets',
@@ -223,6 +265,28 @@
     skillResolver: () => 'air',
     closeFn: () => {
       if (typeof closeWashingLineScreen === 'function') closeWashingLineScreen();
+    },
+  });
+
+  registerScreen('whisper-camp-screen', {
+    kind: 'world-overlay',
+    goldId: 'gold-whisper-camp',
+    invCountId: 'inv-count-whisper-camp',
+    skillPrefix: 'whisper-camp',
+    skillResolver: () => 'architecture',
+    closeFn: () => {
+      if (typeof closeWhisperCampScreen === 'function') closeWhisperCampScreen();
+    },
+  });
+
+  registerScreen('coastal-docks-screen', {
+    kind: 'world-overlay',
+    goldId: 'gold-coastal-docks',
+    invCountId: 'inv-count-coastal-docks',
+    skillPrefix: 'coastal-docks',
+    skillResolver: () => 'architecture',
+    closeFn: () => {
+      if (typeof closeCoastalDocksScreen === 'function') closeCoastalDocksScreen();
     },
   });
 

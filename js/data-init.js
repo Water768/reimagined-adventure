@@ -48,7 +48,7 @@ Object.entries(FURNITURE_CRAFTS).forEach(([id,f])=>{
 });
 const FURNITURE_RECIPES={ ...FURNITURE_CRAFTS };
 const SHELF_CRAFT_RECIPES={ ...SHELF_RECIPES };
-const RECIPES={ ...FURNITURE_RECIPES, ...SHELF_CRAFT_RECIPES };
+const RECIPES={ ...FURNITURE_RECIPES, ...SHELF_CRAFT_RECIPES, ...(typeof WORKBENCH_TOOL_CRAFTS!=='undefined'?WORKBENCH_TOOL_CRAFTS:{}) };
 
 const LOG_TYPES = {};
 Object.keys(LOG_DEFS).forEach(k=>{

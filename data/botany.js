@@ -5,10 +5,19 @@ const APOTHECARY_FURNITURE_KEY='apothecary_table';
 
 const BOTANY_ITEMS={
   basic_herbs:{ key:'basic_herbs', icon:'🌿', name:'Basic Herbs', unidentified:true },
+  medium_apothecary_sprigs:{ key:'medium_apothecary_sprigs', icon:'🌿', name:'Medium Apothecary Sprigs', unidentified:true },
+  silver_vein_fern:{ key:'silver_vein_fern', icon:'🌿', name:'Silver-Vein Fern' },
+  adders_tongue:{ key:'adders_tongue', icon:'🌿', name:"Adder's Tongue" },
+  feather_moss:{ key:'feather_moss', icon:'🌿', name:'Feather-Moss' },
+  wild_berries:{ key:'wild_berries', icon:'🫐', name:'Wild Berries' },
+  herbal_roots:{ key:'herbal_roots', icon:'🫚', name:'Herbal Roots' },
   aloe:{ key:'aloe', icon:'🌵', name:'Aloe' },
   mint:{ key:'mint', icon:'🍃', name:'Mint' },
   sage:{ key:'sage', icon:'🌾', name:'Sage' },
   aloe_gel:{ key:'aloe_gel', icon:'🧴', name:'Aloe Gel' },
+  fossilised_sap:{ key:'fossilised_sap', icon:'🟤', name:'Fossilised Sap' },
+  preserved_root:{ key:'preserved_root', icon:'🪵', name:'Preserved Root' },
+  amber_sap:{ key:'amber_sap', icon:'🟨', name:'Amber Sap' },
 };
 
 const BOTANY_CROP_DEFS={

@@ -106,6 +106,28 @@ function placePlotDefaultTile(x,y){
   setPlotCell(x,y,{ instanceId, typeId });
   if(!state.plotConfigs) state.plotConfigs={};
   state.plotConfigs[instanceId]=defaultPlotConfig(def.behavior, typeId);
+  if(def.behavior==='whisper_camp'){
+    if(typeof migrateWhisperCamp==='function') migrateWhisperCamp();
+    const slot=getPlotCell(x,y);
+    const accountTier=typeof getWhisperCampAccountTier==='function'?getWhisperCampAccountTier():0;
+    if(accountTier>=1&&slot&&typeof applyWhisperCampTierOnSlot==='function'){
+      applyWhisperCampTierOnSlot(slot, accountTier);
+      const cfg=state.plotConfigs[instanceId];
+      if(cfg) cfg.freePlaced=!!state.whisperCampUnlocked;
+    }
+    if(typeof updateWhisperCampCells==='function') updateWhisperCampCells();
+  }
+  if(def.behavior==='coastal_docks'){
+    if(typeof migrateCoastalDocks==='function') migrateCoastalDocks();
+    const slot=getPlotCell(x,y);
+    const accountTier=typeof getCoastalDocksAccountTier==='function'?getCoastalDocksAccountTier():0;
+    if(accountTier>=1&&slot&&typeof applyCoastalDocksTierOnSlot==='function'){
+      applyCoastalDocksTierOnSlot(slot, accountTier);
+      const cfg=state.plotConfigs[instanceId];
+      if(cfg) cfg.freePlaced=!!state.coastalDocksUnlocked;
+    }
+    if(typeof updateCoastalDocksCells==='function') updateCoastalDocksCells();
+  }
   return true;
 }
 
@@ -317,6 +339,36 @@ function forEachPlotOccupied(fn){
   });
 }
 
+function findPlotCoordForInstanceId(instanceId){
+  if(!instanceId||typeof forEachPlotOccupied!=='function') return null;
+  let found=null;
+  forEachPlotOccupied((x,y,slot)=>{
+    if(slot.instanceId===instanceId) found={ x, y, slot };
+  });
+  return found;
+}
+
+function getAdjacentPlotCampTierAt(originX, originY, campBehavior, tierForSlot){
+  if(originX==null||originY==null||!campBehavior||typeof tierForSlot!=='function') return 0;
+  const deltas=[[1,0],[-1,0],[0,1],[0,-1]];
+  let maxTier=0;
+  deltas.forEach(([dx,dy])=>{
+    const neighbor=getPlotCell(originX+dx, originY+dy);
+    if(!neighbor) return;
+    const def=getPlotTileDef(neighbor.typeId);
+    if(!def||def.behavior!==campBehavior) return;
+    maxTier=Math.max(maxTier, tierForSlot(neighbor)|0);
+  });
+  return maxTier|0;
+}
+
+function getAdjacentPlotCampTier(originInstanceId, campBehavior, tierForSlot){
+  if(!originInstanceId||!campBehavior||typeof tierForSlot!=='function') return 0;
+  const origin=findPlotCoordForInstanceId(originInstanceId);
+  if(!origin) return 0;
+  return getAdjacentPlotCampTierAt(origin.x, origin.y, campBehavior, tierForSlot);
+}
+
 function migratePlotCellsFromSlots(slots){
   state.plot.cells={};
   slots.forEach((slot,i)=>{
@@ -356,18 +408,35 @@ function migrateQuarryTypeIds(){
   });
 }
 
+function migrateExpeditionPlotTiles(){
+  if(typeof PLOT_FEATURE_TILE_UNLOCKS==='undefined'||!state.plot?.cells) return;
+  PLOT_FEATURE_TILE_UNLOCKS.forEach((feat)=>{
+    if(feat.typeId!=='sunken_shallows'&&feat.typeId!=='whispering_woods') return;
+    const slot=getPlotCell(feat.x, feat.y);
+    if(!slot) return;
+    const expected=feat.defaultTypeId||feat.typeId;
+    if(slot.typeId===expected) return;
+    const def=getPlotTileDef(slot.typeId);
+    if(slot.typeId==='cave'||(def?.behavior==='cave'&&!def?.expeditionKey)){
+      slot.typeId=expected;
+    }
+  });
+}
+
 function migratePlot(){
   if(!state.plot) state.plot={ cells:null, editMode:false, panX:0, panY:0 };
   if(state.plot.panX==null) state.plot.panX=0;
   if(state.plot.panY==null) state.plot.panY=0;
   if(!state.plotConfigs) state.plotConfigs={};
   normalizePlotCellsStore();
+  if(typeof migrateFairyGrovePlotTiles==='function') migrateFairyGrovePlotTiles();
   migratePlotCellCoordinates();
   migratePlotWorld12x12();
   ensurePlotUnlockedMap();
   seedPlotCoreUnlocked();
   sanitizePlotUnlocksToBudget();
   migrateQuarryTypeIds();
+  migrateExpeditionPlotTiles();
   if(typeof migrateAllPlotStructures==='function') migrateAllPlotStructures();
   if(typeof scrubMisassignedPlotConfigs==='function') scrubMisassignedPlotConfigs();
 

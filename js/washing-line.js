@@ -613,12 +613,9 @@ function washingLineDryTick() {
         if (busy > 0 && free === 0) {
           status.textContent = 'All lines drying — the air is working.';
         } else if (busy > 0) {
-          status.textContent = busy + ' drying, ' + free + ' free — change load or hang the rest.';
-        } else if (recipe) {
-          const dur = washingLineDryDurationLabel(recipe);
-          status.textContent = 'Choose a load' + (dur ? ' (' + dur + ' per line)' : '') + ', then hang & dry.';
+          status.textContent = busy + ' drying, ' + free + ' free';
         } else {
-          status.textContent = 'Choose what to hang.';
+          status.textContent = '';
         }
         status.classList.toggle('idle', busy < 1);
       }
@@ -960,25 +957,31 @@ function renderWashingLineDryControls(cfg) {
       + '</div>'
       + '<span class="wb-log-pick-chevron">▾</span>'
       + '</div>';
-    return;
+  } else {
+    el.innerHTML = WASHING_LINE_DRY_RECIPES.map((r) => {
+      const unlocked = washingLineCanUseDryRecipe(r);
+      const sel = r.id === recipeId ? ' selected' : '';
+      const canPick = unlocked;
+      const onclick = canPick ? (' onclick="setWashingLineDefaultRecipe(\'' + r.id + '\')"') : '';
+      const meta = !unlocked
+        ? (typeof wbMatSuccessLineHtml === 'function' ? wbMatSuccessLineHtml('Air Lv ' + r.airLevel) : '')
+        : (typeof wbMatSuccessLineHtml === 'function'
+          ? wbMatSuccessLineHtml(washingLineDryDurationLabel(r) + ' per line')
+          : '');
+      return '<div class="wb-mat-option' + sel + (canPick ? '' : ' unavail') + '"' + onclick + '>'
+        + '<span class="wb-mat-info">'
+        + '<span class="wb-mat-name">' + washingLineRecipeStockLabelHtml(r, 1) + '</span>'
+        + meta
+        + '</span></div>';
+    }).join('');
   }
 
-  el.innerHTML = WASHING_LINE_DRY_RECIPES.map((r) => {
-    const unlocked = washingLineCanUseDryRecipe(r);
-    const sel = r.id === recipeId ? ' selected' : '';
-    const canPick = unlocked;
-    const onclick = canPick ? (' onclick="setWashingLineDefaultRecipe(\'' + r.id + '\')"') : '';
-    const meta = !unlocked
-      ? (typeof wbMatSuccessLineHtml === 'function' ? wbMatSuccessLineHtml('Air Lv ' + r.airLevel) : '')
-      : (typeof wbMatSuccessLineHtml === 'function'
-        ? wbMatSuccessLineHtml(washingLineDryDurationLabel(r) + ' per line')
-        : '');
-    return '<div class="wb-mat-option' + sel + (canPick ? '' : ' unavail') + '"' + onclick + '>'
-      + '<span class="wb-mat-info">'
-      + '<span class="wb-mat-name">' + washingLineRecipeStockLabelHtml(r, 1) + '</span>'
-      + meta
-      + '</span></div>';
-  }).join('');
+  const xpEl = document.getElementById('washing-line-xp-preview');
+  if (xpEl && recipe?.airXp) {
+    xpEl.innerHTML = '<span class="wb-xp-line">' + formatSkillXp(recipe.airXp, 'Air') + ' on completion</span>';
+  } else if (xpEl) {
+    xpEl.innerHTML = '';
+  }
 }
 
 function renderWashingLineDryLineHtml(cfg, lineIndex) {
@@ -1123,12 +1126,9 @@ function renderWashingLineScreen() {
       if (busy > 0 && free === 0) {
         status.textContent = 'All lines drying — the air is working.';
       } else if (busy > 0) {
-        status.textContent = busy + ' drying, ' + free + ' free — change load or hang the rest.';
-      } else if (recipe) {
-        const dur = washingLineDryDurationLabel(recipe);
-        status.textContent = 'Choose a load' + (dur ? ' (' + dur + ' per line)' : '') + ', then hang & dry.';
+        status.textContent = busy + ' drying, ' + free + ' free';
       } else {
-        status.textContent = 'Choose what to hang.';
+        status.textContent = '';
       }
       status.classList.toggle('idle', busy < 1);
     }

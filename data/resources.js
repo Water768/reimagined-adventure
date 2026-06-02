@@ -58,6 +58,7 @@ const MINE_RESOURCE_DEFS = {
   bucket_of_sand:{ key:'bucket_of_sand', icon:'🪣', name:'Bucket of Sand', category:'basic', unlockLevel:1, vibe:'A bucket packed with dry sand.' },
   molten_glass:{ key:'molten_glass', icon:'🫙', name:'Molten Glass', category:'material', unlockLevel:1, vibe:'Glowing glass still warm from the kiln.' },
   empty_vial: { key:'empty_vial', icon:'🧪', name:'Empty Vial',     category:'tool',  unlockLevel:10, vibe:'A small glass vial waiting to be filled.' },
+  empty_glass_jar:{ key:'empty_glass_jar', icon:'🫙', name:'Empty Glass Jar', category:'tool', unlockLevel:12, vibe:'A wide glass jar — perfect for delicate finds.' },
   vial_of_water:{ key:'vial_of_water', icon:'🧪', name:'Vial of Water', category:'consumable', unlockLevel:10, vibe:'A vial of clear well water.' },
   glass_bottle: { key:'glass_bottle', icon:'🍾', name:'Glass Bottle', category:'tool', unlockLevel:20, vibe:'A sturdy glass bottle — empty for now.' },
   glass_bottle_of_water:{ key:'glass_bottle_of_water', icon:'🍾', name:'Glass Bottle of Water', category:'consumable', unlockLevel:20, vibe:'A bottle brimming with cold well water.' },

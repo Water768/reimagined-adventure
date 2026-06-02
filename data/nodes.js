@@ -27,10 +27,18 @@ const PLOT_TILE_BASE = {
   small_barn_walls:     { typeId:'small_barn_walls',     name:'Small Barn (walls)',   icon:'🏚️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:5, desc:'Walls raised — add 50 slate and 50 nails for the roof.' },
   small_barn_doorless:  { typeId:'small_barn_doorless',  name:'Small Barn (doorless)', icon:'🏚️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:5, desc:'Roof fitted — add 50 ashwood and 50 nails for the barn door.' },
   small_barn_complete:  { typeId:'small_barn_complete',  name:'Small Barn',           icon:'🏚️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:5, desc:'A finished barn — free to place after your first.' },
-  medium_barn_complete: { typeId:'medium_barn_complete', name:'Medium Barn',          icon:'🏛️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:15, footprint:2, desc:'A larger barn spanning two tiles — free to place after your first upgrade.' },
-  large_barn_complete:  { typeId:'large_barn_complete',  name:'Large Barn',           icon:'🏛️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:35, footprint:2, desc:'Four livestock slots and a barn interior — free to place after your first large barn upgrade.' },
+  medium_barn_complete: { typeId:'medium_barn_complete', name:'Medium Barn',          icon:'🏛️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:15, footprint:1, desc:'Two animal pens and a barn interior — free to place after your first upgrade.' },
+  large_barn_complete:  { typeId:'large_barn_complete',  name:'Large Barn',           icon:'🏛️', behavior:'barn', removable:true, category:'structure', archUnlockLevel:35, footprint:1, desc:'Four pens, barn interior, and specialty habitats — free after your first large barn upgrade.' },
   washing_line:          { typeId:'washing_line',          name:'Washing Line',          icon:'🧺', behavior:'washing_line', removable:true, category:'structure', archUnlockLevel:3, desc:'Raise with 20 logs, then 10 rope — dry grass, wheat, and hides with air.' },
   improved_washing_line: { typeId:'improved_washing_line', name:'Washing Line', icon:'🧺', behavior:'washing_line', removable:true, category:'structure', archUnlockLevel:3, desc:'Raise with 20 logs, then 10 rope — dry grass, wheat, and hides with air.' },
+  whisper_camp:          { typeId:'whisper_camp',          name:'Whispering Woods Camp', icon:'⛺', behavior:'whisper_camp', removable:true, category:'structure', archUnlockLevel:1, desc:'Raise with logs — unlock treks at the adjacent Whispering Woods.' },
+  whisper_camp_t2:       { typeId:'whisper_camp_t2',       name:'Whispering Woods Camp', icon:'⛺', behavior:'whisper_camp', removable:true, category:'structure', archUnlockLevel:1, desc:'Upgraded camp — Medium Treks at Whispering Woods.' },
+  whisper_camp_t3:       { typeId:'whisper_camp_t3',       name:'Whispering Woods Camp', icon:'⛺', behavior:'whisper_camp', removable:true, category:'structure', archUnlockLevel:1, desc:'Max camp — Long Treks at Whispering Woods.' },
+  whispering_woods:      { typeId:'whispering_woods',      name:'Whispering Woods',      icon:'🌲', behavior:'cave', expeditionKey:'whispering_woods', removable:true, category:'expedition', desc:'Launch treks when a camp is built next door.' },
+  coastal_docks:         { typeId:'coastal_docks',         name:'Coastal Docks',         icon:'⚓', behavior:'coastal_docks', removable:true, category:'structure', archUnlockLevel:1, desc:'Raise with logs — unlock treks at the adjacent Sunken Shallows.' },
+  coastal_docks_t2:      { typeId:'coastal_docks_t2',      name:'Coastal Docks',         icon:'⚓', behavior:'coastal_docks', removable:true, category:'structure', archUnlockLevel:1, desc:'Upgraded docks — Medium Treks at Sunken Shallows.' },
+  coastal_docks_t3:      { typeId:'coastal_docks_t3',      name:'Coastal Docks',         icon:'⚓', behavior:'coastal_docks', removable:true, category:'structure', archUnlockLevel:1, desc:'Max docks — Long Treks at Sunken Shallows.' },
+  sunken_shallows:       { typeId:'sunken_shallows',       name:'Sunken Shallows',       icon:'🌊', behavior:'cave', expeditionKey:'sunken_shallows', removable:true, category:'expedition', desc:'Launch coastal treks when docks are built next door.' },
   farm_plot:   { typeId:'farm_plot',   name:'Farming Plot', icon:'🌾', behavior:'farm', removable:true, category:'farming', desc:'Plant seeds and harvest crops over time.' },
 };
 
@@ -140,6 +148,7 @@ const GATHERING_LOCATIONS=[
       {key:'basic_herbs',icon:'🌿',name:'Basic Herbs',weight:20},
       {key:'feathers',icon:'🪶',name:'Feathers',weight:15},
       {key:'duckweed',icon:'🌿',name:'Duckweed',weight:20},
+      {key:'gathering_page',icon:'📄',name:'Gathering Page',weight:4},
     ],
   },
   {
@@ -154,6 +163,7 @@ const GATHERING_LOCATIONS=[
       {key:'mushrooms',icon:'🍄',name:'Mushrooms',weight:20},
       {key:'basic_herbs',icon:'🌿',name:'Basic Herbs',weight:20},
       {key:'feathers',icon:'🪶',name:'Feathers',weight:10},
+      {key:'gathering_page',icon:'📄',name:'Gathering Page',weight:4},
     ],
   },
   {
@@ -175,6 +185,45 @@ const GATHERING_LOCATIONS=[
       {key:'artefact_extreme',icon:'👑',name:'Extreme Artefact',weight:0.5,rare:true},
     ],
   },
+  {
+    key:'fairy_grove',
+    typeId:'gather_fairy_grove',
+    name:'The Fairy Grove',
+    icon:'🧚',
+    shardTypes:['earth'],
+    harvestLevel:15,
+    unlockRequirements:[
+      { skill:'earth', level:15 },
+      { skill:'husbandry', level:20 },
+    ],
+    drops:[
+      {key:'mushrooms',icon:'🍄',name:'Mushrooms',weight:815},
+      {key:'medium_apothecary_sprigs',icon:'🌿',name:'Medium Apothecary Sprigs',weight:120},
+      {key:'fairy_dust',icon:'✨',name:'Fairy Dust',weight:40},
+      {key:'gathering_page',icon:'📄',name:'Gathering Page',weight:20},
+      {key:'shed_glowing_antler_piece',icon:'🦌',name:'Shed Glowing Antler Piece',weight:5,rare:true},
+    ],
+  },
+  {
+    key:'sunken_rock_pools',
+    typeId:'gather_sunken_rock_pools',
+    name:'The Sunken Rock Pools',
+    icon:'🪨',
+    shardTypes:['water'],
+    harvestLevel:15,
+    unlockRequirements:[{ skill:'water', level:15 }],
+    drops:[
+      {key:'seashell',icon:'🐚',name:'Seashell',weight:23},
+      {key:'medium_apothecary_sprigs',icon:'🌿',name:'Medium Apothecary Sprigs',weight:17},
+      {key:'pool_goby',icon:'🐟',name:'Pool Goby',weight:20},
+      {key:'hermit_crab_shell',icon:'🦀',name:'Hermit Crab Shell',weight:15},
+      {key:'purple_jelly_goo',icon:'🟣',name:'Purple Jelly Goo',weight:12},
+      {key:'sunken_lockbox',icon:'📦',name:'Sunken Lockbox',weight:6},
+      {key:'gathering_page',icon:'📄',name:'Gathering Page',weight:4},
+      {key:'glittering_fishscale',icon:'✨',name:'Glittering Fishscale',weight:2,rare:true},
+      {key:'glow_anemone_spores',icon:'🪸',name:'Glow-Anemone Spores',weight:1,rare:true},
+    ],
+  },
 ];
 
 function sortedGatheringDrops(gatherKey){
@@ -186,11 +235,12 @@ function sortedGatheringDrops(gatherKey){
     .map(d=>({ ...d, pct:Math.round((d.weight/total)*100) }));
 }
 
-const GATHER_BASE_SUCCESS=0.20;
-const GATHER_SUCCESS_PER_LEVEL=0.05;
+const GATHER_BASE_SUCCESS=0.14;
+const GATHER_SUCCESS_PER_LEVEL=0.003;
+const GATHER_MAX_SUCCESS=0.22;
 const GATHER_ITEMS_PER_SESSION=8;
-const GATHER_XP_SUCCESS=8;
-const GATHER_XP_MISS=2;
+const GATHER_XP_SUCCESS=20;
+const GATHER_XP_MISS=8;
 const CLUTTER_CHANCE=1/3;
 
 const MINE_MAX_STACKS=10;

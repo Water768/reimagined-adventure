@@ -122,7 +122,7 @@ let plotLockedMenuCloser=null;
 function closePlotLockedTileMenu(){
   document.getElementById('plot-locked-menu')?.remove();
   if(plotLockedMenuCloser){
-    document.removeEventListener('pointerdown',plotLockedMenuCloser,true);
+    document.removeEventListener('click',plotLockedMenuCloser,true);
     plotLockedMenuCloser=null;
   }
 }
@@ -133,17 +133,11 @@ function getStructurePlotMenuIds(){
   else if(typeof isWellFinishedUnlocked==='function'&&isWellFinishedUnlocked()) ids.push('well_finished');
   else ids.push('well');
   if(typeof isBarnUnlocked==='function'&&isBarnUnlocked()){
-    ids.push('small_barn_complete');
-    if(typeof isLargeBarnUnlocked==='function'&&isLargeBarnUnlocked()
-      &&typeof canUseLargeBarnStructure==='function'&&canUseLargeBarnStructure()){
-      ids.push('large_barn_complete');
-    }else if(typeof canUseMediumBarnStructure==='function'&&canUseMediumBarnStructure()){
-      ids.push('medium_barn_complete');
-    }
+    ids.push('small_barn_complete','medium_barn_complete','large_barn_complete');
   }else if(typeof isBarnDoorlessUnlocked==='function'&&isBarnDoorlessUnlocked()) ids.push('small_barn_doorless');
   else if(typeof isBarnWallsUnlocked==='function'&&isBarnWallsUnlocked()) ids.push('small_barn_walls');
   else ids.push('small_barn');
-  ids.push('fire_pit','simple_kiln','washing_line');
+  ids.push('fire_pit','simple_kiln','washing_line','whisper_camp','coastal_docks');
   return ids;
 }
 
@@ -212,17 +206,15 @@ function openPlotLockedTileMenu(x,y){
     plotLockedMenuCloser=function(e){
       const menu=document.getElementById('plot-locked-menu');
       if(!menu){
-        document.removeEventListener('pointerdown',plotLockedMenuCloser,true);
+        document.removeEventListener('click',plotLockedMenuCloser,true);
         plotLockedMenuCloser=null;
         return;
       }
       if(menu.contains(e.target)) return;
       closePlotLockedTileMenu();
-      e.preventDefault();
-      e.stopPropagation();
     };
-    document.addEventListener('pointerdown',plotLockedMenuCloser,true);
-  },80);
+    document.addEventListener('click',plotLockedMenuCloser,true);
+  },0);
 }
 
 function unlockPlotTileFromLockedMenu(x,y){
@@ -257,13 +249,9 @@ function onPlotTileTap(event,x,y, slot){
   if(!def) return;
   if(state.plot.editMode){
     if(!def.removable) return;
-    if(def.behavior==='barn'){
-      const cfg=typeof getBarnConfig==='function'?getBarnConfig(slot.instanceId):null;
-      const multi=cfg&&(typeof isMultiTileBarn==='function'?isMultiTileBarn(cfg):(cfg.size==='medium'||cfg.size==='large'));
-      if(multi&&typeof confirmRemoveMediumBarn==='function'){
-        confirmRemoveMediumBarn(slot.instanceId);
-        return;
-      }
+    if(def.behavior==='barn'&&typeof confirmRemoveMediumBarn==='function'){
+      confirmRemoveMediumBarn(slot.instanceId);
+      return;
     }
     confirmRemovePlotTile(x,y, slot, def);
     return;
@@ -369,12 +357,11 @@ function handleFirePitCellTap(e, cell, slot){
 function handleBarnCellTap(e, cell, slot){
   setActiveBarn(slot.instanceId);
   const cfg=typeof getBarnConfig==='function'?getBarnConfig(slot.instanceId):null;
-  if(cfg&&typeof isLargeBarn==='function'&&isLargeBarn(cfg)){
-    if(e.target?.closest('.plot-menu-btn')){ barnMenuTap(e); return; }
-    if(isPlotMenuZone(cell, e.clientY)){
-      barnMenuTap(e);
-      return;
-    }
+  if(cfg&&typeof isBarnInteriorAvailable==='function'&&isBarnInteriorAvailable(cfg)){
+    if(e.target?.closest('.plot-menu-btn')||e.target?.closest('.barn-menu-zone')){ barnMenuTap(e); return; }
+    if(typeof isBarnMenuZone==='function'&&isBarnMenuZone(cell, e.clientY)){ barnMenuTap(e); return; }
+    if(typeof isBarnEnterZone==='function'&&isBarnEnterZone(cell, e.clientY)&&typeof barnEnterTap==='function'){ barnEnterTap(e); return; }
+    if(typeof handleBarnSurfaceTap==='function'){ handleBarnSurfaceTap(e, cell); return; }
     if(typeof barnEnterTap==='function') barnEnterTap(e);
     return;
   }
@@ -457,6 +444,15 @@ function handleGatherCellTap(e, cell, slot){
     showToast('Bag full ('+invTotal()+'/'+getInvCap()+') — make room before foraging.');
     revealPlotActivityMenu('gather:'+instanceId, cell);
     return;
+  }
+  const tapLoc=typeof getGatheringByTypeId==='function'?getGatheringByTypeId(slot.typeId):null;
+  if(tapLoc&&typeof checkGatherAfternoonHarvestAllowed==='function'){
+    const allowed=checkGatherAfternoonHarvestAllowed(tapLoc);
+    if(!allowed.ok){
+      showToast(allowed.message||'Cannot forage here yet.');
+      revealPlotActivityMenu('gather:'+instanceId, cell);
+      return;
+    }
   }
   startGathering(instanceId);
   revealPlotActivityMenu('gather:'+instanceId, cell);
@@ -561,7 +557,7 @@ function structurePlotAddItemHtml(id, def, x, y, opts){
   const disabled=!!opts?.disabled;
   const drops=opts?.drops||(unlocked?'Unlocked. Free to place':'Locked. Place structure to finish building');
   const cls='plot-add-item '+(unlocked?'structure-unlocked':'structure-locked'+(disabled?' is-disabled':''));
-  return '<button type="button" class="'+cls+'"'+(disabled?' disabled':'')+' onclick="placePlotTile('+x+','+y+',\''+id+'\')">'
+  return '<button type="button" class="'+cls+'" onclick="plotAddItemTap(event,'+x+','+y+',\''+id+'\')">'
     +'<span class="plot-add-item-icon">'+def.icon+'</span>'
     +'<span class="plot-add-item-name">'+def.name
     +'<span class="plot-add-item-drops">'+drops+'</span></span></button>';
@@ -664,6 +660,48 @@ function buildStructurePlotAddItem(id, def, x, y){
     return structurePlotAddItemHtml(id, def, x, y, { unlocked, disabled:!canPlace });
   }
   if(id==='improved_washing_line') return '';
+  if(id==='whisper_camp'){
+    if(typeof canUseWhisperCampStructure==='function'&&!canUseWhisperCampStructure()){
+      return structurePlotAddItemHtml(id, def, x, y, {
+        unlocked:false,
+        disabled:true,
+        drops:'Need Architecture Lv '+WHISPER_CAMP_ARCH_UNLOCK,
+      });
+    }
+    const featureUnlocked=typeof isPlotFeatureUnlockedByTile==='function'&&isPlotFeatureUnlockedByTile('whisper_camp');
+    if(!featureUnlocked){
+      return structurePlotAddItemHtml(id, def, x, y, {
+        unlocked:false,
+        disabled:true,
+        drops:'Discover the camp site by unlocking map tiles east of your homestead.',
+      });
+    }
+    const unlocked=typeof isWhisperCampUnlocked==='function'&&isWhisperCampUnlocked();
+    const canPlace=typeof canPlaceWhisperCamp==='function'&&canPlaceWhisperCamp();
+    return structurePlotAddItemHtml(id, def, x, y, { unlocked, disabled:!canPlace });
+  }
+  if(id==='whisper_camp_t2'||id==='whisper_camp_t3') return '';
+  if(id==='coastal_docks'){
+    if(typeof canUseCoastalDocksStructure==='function'&&!canUseCoastalDocksStructure()){
+      return structurePlotAddItemHtml(id, def, x, y, {
+        unlocked:false,
+        disabled:true,
+        drops:'Need Architecture Lv '+COASTAL_DOCKS_ARCH_UNLOCK,
+      });
+    }
+    const featureUnlocked=typeof isPlotFeatureUnlockedByTile==='function'&&isPlotFeatureUnlockedByTile('coastal_docks');
+    if(!featureUnlocked){
+      return structurePlotAddItemHtml(id, def, x, y, {
+        unlocked:false,
+        disabled:true,
+        drops:'Discover the dock site by unlocking map tiles east of your homestead.',
+      });
+    }
+    const unlocked=typeof isCoastalDocksUnlocked==='function'&&isCoastalDocksUnlocked();
+    const canPlace=typeof canPlaceCoastalDocks==='function'&&canPlaceCoastalDocks();
+    return structurePlotAddItemHtml(id, def, x, y, { unlocked, disabled:!canPlace });
+  }
+  if(id==='coastal_docks_t2'||id==='coastal_docks_t3') return '';
   if(id==='large_barn_complete'){
     if(typeof canUseLargeBarnStructure==='function'&&!canUseLargeBarnStructure()){
       return structurePlotAddItemHtml(id, def, x, y, {
@@ -680,8 +718,8 @@ function buildStructurePlotAddItem(id, def, x, y){
       drops:!unlocked
         ?'Locked. Upgrade a medium barn to large first.'
         :!canPlace
-          ?'Need two adjacent empty unlocked tiles here'
-          :'Spans 2 tiles — free after your first large barn upgrade',
+          ?'Need an empty unlocked tile here'
+          :'One tile — free after your first large barn upgrade',
     });
   }
   if(id==='medium_barn_complete'){
@@ -700,19 +738,31 @@ function buildStructurePlotAddItem(id, def, x, y){
       drops:!unlocked
         ?'Locked. Upgrade a small barn first.'
         :!canPlace
-          ?'Need two adjacent empty unlocked tiles here'
-          :'Spans 2 tiles — free after your first upgrade',
+          ?'Need an empty unlocked tile here'
+          :'One tile — free after your first upgrade',
     });
   }
   return structurePlotAddItemHtml(id, def, x, y, { unlocked:false, disabled:false });
 }
 
 function placePlotTile(x,y, typeId){
+  try{
   migratePlot();
-  if(getPlotCell(x,y)) return;
+  if(getPlotCell(x,y)){
+    showToast('That tile is already occupied.');
+    return;
+  }
   const def=getPlotTileDef(typeId);
   if(!def) return;
   if(!def.removable) return;
+  if(def.behavior==='gather'){
+    const loc=typeof getGatheringByKey==='function'?getGatheringByKey(def.gatherKey):null;
+    if(loc&&typeof meetsGatheringUnlockRequirements==='function'&&!meetsGatheringUnlockRequirements(loc)){
+      const msg=typeof getGatheringUnlockBlockMessage==='function'?getGatheringUnlockBlockMessage(loc):'';
+      showToast(msg?('Need '+msg+' for '+def.name+'.'):'Cannot place '+def.name+' yet.');
+      return;
+    }
+  }
   if(def.behavior==='water'&&typeof canPlaceAnotherWaterPlotTile==='function'&&!canPlaceAnotherWaterPlotTile()){
     showToast(typeof waterPlotTileLimitMessage==='function'?waterPlotTileLimitMessage():'Water tile limit reached.');
     return;
@@ -756,6 +806,26 @@ function placePlotTile(x,y, typeId){
     }
     if(typeof canPlaceWashingLine==='function'&&!canPlaceWashingLine()){
       showToast('Finish building your first washing line before placing another.');
+      return;
+    }
+  }
+  if(def.behavior==='whisper_camp'){
+    if(typeof canUseWhisperCampStructure==='function'&&!canUseWhisperCampStructure()){
+      showToast('Need Architecture Lv '+WHISPER_CAMP_ARCH_UNLOCK+' for Whispering Woods Camp.');
+      return;
+    }
+    if(typeof canPlaceWhisperCamp==='function'&&!canPlaceWhisperCamp()){
+      showToast('Finish building your first camp before placing another.');
+      return;
+    }
+  }
+  if(def.behavior==='coastal_docks'){
+    if(typeof canUseCoastalDocksStructure==='function'&&!canUseCoastalDocksStructure()){
+      showToast('Need Architecture Lv '+COASTAL_DOCKS_ARCH_UNLOCK+' for Coastal Docks.');
+      return;
+    }
+    if(typeof canPlaceCoastalDocks==='function'&&!canPlaceCoastalDocks()){
+      showToast('Finish building your first docks before placing another.');
       return;
     }
   }
@@ -917,6 +987,50 @@ function placePlotTile(x,y, typeId){
     }
     return;
   }
+  if(def.behavior==='whisper_camp'){
+    migrateWhisperCamp();
+    const cfg=getWhisperCampConfig(instanceId);
+    setActiveWhisperCamp(instanceId);
+    const slot=getPlotCell(x,y);
+    const accountTier=getWhisperCampAccountTier();
+    if(accountTier>=1&&slot){
+      applyWhisperCampTierOnSlot(slot, accountTier);
+      cfg.logs=WHISPER_CAMP_LOGS_BUILD;
+      cfg.complete=true;
+      cfg.campTier=accountTier;
+      cfg.freePlaced=true;
+      scheduleSaveGame();
+      renderPlotGrid();
+      showToast('Whispering Woods Camp placed.');
+    }else{
+      scheduleSaveGame();
+      renderPlotGrid();
+      showToast('You mark out the camp site. Logs needed to raise the frame.');
+    }
+    return;
+  }
+  if(def.behavior==='coastal_docks'){
+    migrateCoastalDocks();
+    const cfg=getCoastalDocksConfig(instanceId);
+    setActiveCoastalDocks(instanceId);
+    const slot=getPlotCell(x,y);
+    const accountTier=getCoastalDocksAccountTier();
+    if(accountTier>=1&&slot){
+      applyCoastalDocksTierOnSlot(slot, accountTier);
+      cfg.logs=COASTAL_DOCKS_LOGS_BUILD;
+      cfg.complete=true;
+      cfg.campTier=accountTier;
+      cfg.freePlaced=true;
+      scheduleSaveGame();
+      renderPlotGrid();
+      showToast('Coastal Docks placed.');
+    }else{
+      scheduleSaveGame();
+      renderPlotGrid();
+      showToast('You mark out the dock site. Logs needed to raise the frame.');
+    }
+    return;
+  }
   if(def.behavior==='barn'){
     migrateBarn();
     const cfg=getBarnConfig(instanceId);
@@ -945,21 +1059,38 @@ function placePlotTile(x,y, typeId){
   }
   renderPlotGrid();
   showToast(def.icon+' '+def.name+' placed.');
+  }catch(err){
+    console.error('[Hearthstead] placePlotTile failed:', err);
+    showToast('Could not place that — try again.');
+    if(typeof renderPlotGrid==='function') renderPlotGrid({ full:true });
+  }
+}
+
+function detachPlotAddMenuCloser(){
+  if(plotAddMenuCloser){
+    document.removeEventListener('click',plotAddMenuCloser,true);
+    plotAddMenuCloser=null;
+  }
 }
 
 function closePlotAddMenu(){
   document.getElementById('plot-add-menu')?.remove();
   plotAddCoords=null;
-  if(plotAddMenuCloser){
-    document.removeEventListener('pointerdown',plotAddMenuCloser,true);
-    plotAddMenuCloser=null;
-  }
+  detachPlotAddMenuCloser();
+}
+
+/** Run placePlotTile or show why the item is blocked — never use native disabled (clicks pass through). */
+function plotAddItemTap(event,x,y,typeId){
+  if(event?.stopPropagation) event.stopPropagation();
+  plotSuppressClick=false;
+  placePlotTile(x,y,typeId);
 }
 
 function openPlotAddMenu(x,y){
   closePlotAddMenu();
   closePlotLockedTileMenu();
   hideAllPlotActivityMenus();
+  plotSuppressClick=false;
   plotAddCoords={ x, y };
   const showLocked=plotAddMenuShowsLocked();
   const w=document.getElementById('game-wrapper');
@@ -988,17 +1119,20 @@ function openPlotAddMenu(x,y){
       if(cat.id==='cave'){
         return buildCavePlotAddItem(id, def, x, y);
       }
+      if(cat.id==='expedition'){
+        return buildExpeditionPlotAddItem(id, def, x, y);
+      }
       if(cat.id==='structures'){
         return buildStructurePlotAddItem(id, def, x, y);
       }
       if(cat.id==='water'){
         return buildWaterPlotAddItem(id, def, x, y);
       }
-      return '<button type="button" class="plot-add-item" onclick="placePlotTile('+x+','+y+',\''+id+'\')">'
+      return '<button type="button" class="plot-add-item" onclick="plotAddItemTap(event,'+x+','+y+',\''+id+'\')">'
         +'<span class="plot-add-item-icon">'+def.icon+'</span>'
         +'<span class="plot-add-item-name">'+def.name+'</span></button>';
     }).join('');
-    catsHtml+='<div class="plot-add-cat">'
+    catsHtml+='<div class="plot-add-cat'+(cat.id==='structures'?' open':'')+'">'
       +'<button type="button" class="plot-add-cat-head" onclick="togglePlotAddCategory(this)">'
       +'<span>'+cat.label+'</span><span class="plot-add-cat-chevron">▸</span></button>'
       +'<div class="plot-add-cat-body">'
@@ -1019,17 +1153,14 @@ function openPlotAddMenu(x,y){
     plotAddMenuCloser=function(e){
       const menu=document.getElementById('plot-add-menu');
       if(!menu){
-        document.removeEventListener('pointerdown',plotAddMenuCloser,true);
-        plotAddMenuCloser=null;
+        detachPlotAddMenuCloser();
         return;
       }
       if(menu.contains(e.target)) return;
       closePlotAddMenu();
-      e.preventDefault();
-      e.stopPropagation();
     };
-    document.addEventListener('pointerdown',plotAddMenuCloser,true);
-  },80);
+    document.addEventListener('click',plotAddMenuCloser,true);
+  },0);
 }
 
 function togglePlotAddCategory(headBtn){

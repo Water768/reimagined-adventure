@@ -12,7 +12,9 @@ const PLOT_TILE_MENU = [
     id:'gathering',
     label:'Clearings',
     desc:'Forage for herbs, fibres, and odd finds.',
-    items:['gather_wet_clearing','gather_woodland_clearing','gather_rocky_clearing'],
+    items:typeof GATHERING_LOCATIONS!=='undefined'
+      ?GATHERING_LOCATIONS.map((g)=>g.typeId)
+      :['gather_wet_clearing','gather_woodland_clearing','gather_rocky_clearing'],
   },
   {
     id:'water',
@@ -33,10 +35,16 @@ const PLOT_TILE_MENU = [
     items:['cave'],
   },
   {
+    id:'expedition',
+    label:'Expeditions',
+    desc:'Launch treks from woodland trails — some need an adjacent camp.',
+    items:['whispering_woods','sunken_shallows'],
+  },
+  {
     id:'structures',
     label:'Structures',
     desc:'Permanent builds that upgrade your homestead.',
-    items:['well','well_finished','well_hydrated','fire_pit','simple_kiln','washing_line','small_barn','small_barn_walls','small_barn_doorless','small_barn_complete','medium_barn_complete','large_barn_complete'],
+    items:['well','well_finished','well_hydrated','fire_pit','simple_kiln','washing_line','whisper_camp','coastal_docks','small_barn','small_barn_walls','small_barn_doorless','small_barn_complete','medium_barn_complete','large_barn_complete'],
   },
   {
     id:'farming',
@@ -46,7 +54,7 @@ const PLOT_TILE_MENU = [
   },
 ];
 const DEFAULT_INTERIOR_LAYOUT = [
-  'wardrobe','fireplace','picture',
+  'wardrobe','fireplace','build',
   'workbench','build','build',
   'dogbed','doorway','build',
 ];
@@ -56,11 +64,13 @@ const INTERIOR_ROOM_DEFS = {
   workbench: { typeId:'workbench', name:'Workbench', icon:'🪚', desc:'Craft furniture, shelves, and carpentry projects.' },
   fireplace: { typeId:'fireplace', name:'Fireplace', icon:'🔥', desc:'Cook raw fish and stoke the hearth for Fire skill.' },
   wardrobe:  { typeId:'wardrobe',  name:'Wardrobe',  icon:'🚪', desc:'Change clothes and stash outfits out of the way.' },
-  picture:   { typeId:'picture',   name:'Picture',   icon:'🖼️', desc:'A crooked frame — poke it and see what falls loose.' },
   dogbed:    { typeId:'dogbed',    name:'Dog Bed',   icon:'🛏️', desc:'Tidy up, manage pets, and unlock husbandry perks.' },
   spinningwheel: { typeId:'spinningwheel', name:'Spinning Wheel', icon:'🎡', desc:'Spin fibers into thread, or twist thread and flax into rope.' },
   apothecary_table: { typeId:'apothecary_table', name:'Apothecary Table', icon:'⚗️', desc:'Identify foraged herbs and unlock botany work.' },
   wonky_loom: { typeId:'wonky_loom', name:'Wonky Loom', icon:'🧵', desc:'Weave thread and fiber into cloth — wobbly, but it works.' },
+  study_desk: { typeId:'study_desk', name:'Study Desk', icon:'📖', desc:'Study academia — books, maps, and artefacts.' },
+  bookcase: { typeId:'bookcase', name:'Bookcase', icon:'📚', desc:'Activate journal rewards earned at the study desk.' },
+  crafting_desk: { typeId:'crafting_desk', name:'Crafting Desk', icon:'🛠️', desc:'Craft waterproof paste, waders, and other workshop goods.' },
 };
 const FURNITURE_DEFS={};
 
@@ -78,7 +88,7 @@ const CHAIR_SIT_LINES=[
   'Outside, something moves in the grass. You do not need to check. Not everything asks for your attention.',
   'The wood is warm where the sun touched it through the window. You stay a little longer.',
 ];
-const INTERIOR_ROOM_MENU = ['storeroom','tool_store','workbench','fireplace','spinningwheel','wardrobe','picture','dogbed'];
+const INTERIOR_ROOM_MENU = ['storeroom','tool_store','workbench','fireplace','spinningwheel','wardrobe','dogbed'];
 
 const ARCH_ROOM_BONUS_BASE_XP = 5000;
 const ARCH_ROOM_BONUS_SCALE = 1.3;

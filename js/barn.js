@@ -3,6 +3,7 @@
 
 let activeBarnInstanceId=null;
 let barnTimerHandle=null;
+let barnTroughPreviewExpanded=false;
 
 function getBarnActivitySkillKey(){
   const cfg=getBarnConfig(activeBarnInstanceId);
@@ -14,6 +15,7 @@ function normalizeBarnConfig(cfg){
     frameLogs:0, frameNails:0, roofSlate:0, roofNails:0, doorAshwood:0, doorNails:0,
     framed:false, roofed:false, complete:false, freePlaced:false,
     animalSlots:[], storedLoot:{}, storedEggs:0, storedFeathers:0, storedCollectXp:0,
+    troughStock:{}, troughAutoFeed:false, troughRecentFoods:[],
   };
   if(cfg.frameLogs==null) cfg.frameLogs=0;
   if(cfg.frameNails==null) cfg.frameNails=0;
@@ -30,6 +32,8 @@ function normalizeBarnConfig(cfg){
   if(cfg.storedEggs==null) cfg.storedEggs=0;
   if(cfg.storedFeathers==null) cfg.storedFeathers=0;
   if(cfg.storedCollectXp==null) cfg.storedCollectXp=0;
+  clampBarnTroughStock(cfg);
+  if(!cfg.troughRecentFoods) cfg.troughRecentFoods=[];
   ensureBarnAnimalSlots(cfg);
   migrateBarnStoredLoot(cfg);
   if(cfg.pendingEggs|0){
@@ -46,7 +50,6 @@ function normalizeBarnConfig(cfg){
     cfg.pendingFeathers=0;
     syncBarnStoredTotals(cfg);
   }
-  processBarnFeedCatchUp(cfg);
   if(isBarnFrameComplete(cfg)){
     cfg.frameLogs=BARN_FRAME_LOGS;
     cfg.frameNails=BARN_FRAME_NAILS;
@@ -151,8 +154,8 @@ function isLargeBarnInstance(instanceId){
   return isLargeBarn(cfg);
 }
 
-function isMultiTileBarnInstance(instanceId){
-  return isMediumBarnInstance(instanceId)||isLargeBarnInstance(instanceId);
+function isMultiTileBarnInstance(_instanceId){
+  return false;
 }
 
 function setActiveBarn(instanceId){
@@ -610,31 +613,16 @@ function canPlaceMediumBarn(){
 
 function canPlaceMediumBarnAt(ax, ay){
   if(!canPlaceMediumBarn()) return false;
-  return !!findMediumBarnPlacement(ax, ay);
+  return isCoordInUnlockedPlot(ax, ay)&&!getPlotCell(ax, ay);
 }
 
-function findBarnPlacementAtClick(ax, ay, size){
-  const orientations=['h','v'];
-  const tryAnchor=(orientation, anchorX, anchorY)=>{
-    const offsets=getBarnFootprintOffsets(orientation, size);
-    const cells=offsets.map(o=>({ x:anchorX+o.dx, y:anchorY+o.dy }));
-    if(!cells.some(c=>c.x===ax&&c.y===ay)) return null;
-    if(!cells.every(c=>!getPlotCell(c.x,c.y)&&isCoordInUnlockedPlot(c.x,c.y))) return null;
-    return { orientation, anchor:{ x:anchorX, y:anchorY } };
-  };
-  for(const orientation of orientations){
-    const atClick=tryAnchor(orientation, ax, ay);
-    if(atClick) return atClick;
-  }
-  for(const orientation of orientations){
-    const offsets=getBarnFootprintOffsets(orientation, size);
-    for(const o of offsets){
-      if(!o.dx&&!o.dy) continue;
-      const atClick=tryAnchor(orientation, ax-o.dx, ay-o.dy);
-      if(atClick) return atClick;
-    }
-  }
-  return null;
+function canPlaceSingleTileBarnAt(ax, ay){
+  return isCoordInUnlockedPlot(ax, ay)&&!getPlotCell(ax, ay);
+}
+
+function findBarnPlacementAtClick(ax, ay, _size){
+  if(!isCoordInUnlockedPlot(ax, ay)||getPlotCell(ax, ay)) return null;
+  return { orientation:'h', anchor:{ x:ax, y:ay } };
 }
 
 function findMediumBarnPlacement(ax, ay){
@@ -642,87 +630,23 @@ function findMediumBarnPlacement(ax, ay){
 }
 
 function getMediumBarnPlacementBlockReason(ax, ay){
-  if(!isCoordInUnlockedPlot(ax, ay)){
-    return 'That plot tile is not unlocked yet.';
-  }
-  const tries=[
-    { orientation:'h', anchor:{ x:ax, y:ay } },
-    { orientation:'v', anchor:{ x:ax, y:ay } },
-    { orientation:'h', anchor:{ x:ax-1, y:ay } },
-    { orientation:'v', anchor:{ x:ax, y:ay-1 } },
-  ];
-  let sawLocked=false;
-  let sawOccupied=false;
-  for(const t of tries){
-    const offsets=getBarnFootprintOffsets(t.orientation,'medium');
-    const cells=offsets.map(o=>({ x:t.anchor.x+o.dx, y:t.anchor.y+o.dy }));
-    if(cells.some(c=>!isCoordInUnlockedPlot(c.x,c.y))){ sawLocked=true; continue; }
-    if(cells.some(c=>getPlotCell(c.x,c.y))){ sawOccupied=true; continue; }
-    return null;
-  }
-  if(sawOccupied){
-    return 'No room for a medium barn — clear the neighboring tile(s) first.';
-  }
-  if(sawLocked){
-    return 'No room for a medium barn — unlock the neighboring plot tile(s) first.';
-  }
-  return 'No room for a medium barn — you need two empty adjacent unlocked tiles.';
+  if(!isCoordInUnlockedPlot(ax, ay)) return 'That plot tile is not unlocked yet.';
+  if(getPlotCell(ax, ay)) return 'That tile is already occupied.';
+  return null;
 }
 
 function hasBarnUpgradeSpace(instanceId){
-  const found=typeof findPlotSlotByInstanceId==='function'?findPlotSlotByInstanceId(instanceId):null;
-  if(!found) return false;
-  return !!findBarnUpgradePlacement(found.x, found.y);
+  return !!findPlotSlotByInstanceId(instanceId);
 }
 
 function getBarnUpgradePlacementBlockReason(instanceId){
-  instanceId=instanceId||activeBarnInstanceId;
-  const found=findPlotSlotByInstanceId(instanceId);
-  if(!found) return 'Could not find this barn on your plot.';
-  const bx=found.x;
-  const by=found.y;
-  const tries=[
-    { orientation:'h', anchor:{ x:bx, y:by }, expand:{ x:bx+1, y:by } },
-    { orientation:'h', anchor:{ x:bx-1, y:by }, expand:{ x:bx, y:by } },
-    { orientation:'v', anchor:{ x:bx, y:by }, expand:{ x:bx, y:by+1 } },
-    { orientation:'v', anchor:{ x:bx, y:by-1 }, expand:{ x:bx, y:by } },
-  ];
-  let sawLocked=false;
-  let sawOccupied=false;
-  for(const t of tries){
-    const offsets=getBarnFootprintOffsets(t.orientation,'medium');
-    const cells=offsets.map(o=>({ x:t.anchor.x+o.dx, y:t.anchor.y+o.dy }));
-    if(!cells.some(c=>c.x===bx&&c.y===by)) continue;
-    if(!isCoordInUnlockedPlot(t.expand.x,t.expand.y)){ sawLocked=true; continue; }
-    if(getPlotCell(t.expand.x,t.expand.y)){ sawOccupied=true; continue; }
-    return null;
-  }
-  if(sawOccupied){
-    return 'No room to expand — clear the tile next to your barn first.';
-  }
-  if(sawLocked){
-    return 'No room to expand — unlock the plot tile next to your barn first.';
-  }
-  return 'No room to expand — you need an empty unlocked tile beside this barn.';
+  if(!findPlotSlotByInstanceId(instanceId)) return 'Could not find this barn on your plot.';
+  return null;
 }
 
 function findBarnUpgradePlacement(bx, by){
-  const tries=[
-    { orientation:'h', anchor:{ x:bx, y:by }, expand:{ x:bx+1, y:by } },
-    { orientation:'h', anchor:{ x:bx-1, y:by }, expand:{ x:bx, y:by } },
-    { orientation:'v', anchor:{ x:bx, y:by }, expand:{ x:bx, y:by+1 } },
-    { orientation:'v', anchor:{ x:bx, y:by-1 }, expand:{ x:bx, y:by } },
-  ];
-  for(const t of tries){
-    if(getPlotCell(t.expand.x,t.expand.y)) continue;
-    if(!isCoordInUnlockedPlot(t.expand.x,t.expand.y)) continue;
-    const offsets=getBarnFootprintOffsets(t.orientation,'medium');
-    const cells=offsets.map(o=>({ x:t.anchor.x+o.dx, y:t.anchor.y+o.dy }));
-    const hasBarn=cells.some(c=>c.x===bx&&c.y===by);
-    if(!hasBarn) continue;
-    if(cells.every(c=>(c.x===bx&&c.y===by)||(!getPlotCell(c.x,c.y)&&isCoordInUnlockedPlot(c.x,c.y)))) return t;
-  }
-  return null;
+  if(!isCoordInUnlockedPlot(bx, by)) return null;
+  return { orientation:'h', anchor:{ x:bx, y:by } };
 }
 
 function barnUpgradeMaterialsMet(){
@@ -795,11 +719,12 @@ function upgradeSmallBarnToMedium(){
   cfg.anchorX=placement.anchor.x;
   cfg.anchorY=placement.anchor.y;
   ensureBarnAnimalSlots(cfg);
+  if(typeof ensureBarnInterior==='function') ensureBarnInterior(cfg);
   const showBanner=typeof isStructureStageBonusPending==='function'
     ?isStructureStageBonusPending('medium_barn')
     :!state.mediumBarnUnlocked;
   unlockMediumBarns();
-  syncBarnFootprintCells(instanceId, getMediumBarnTypeId());
+  setPlotCell(found.x, found.y, { instanceId, typeId:getMediumBarnTypeId() });
   grantXP('architecture', consumed.archXp, null);
   scheduleSaveGame();
   const refreshMedium=()=>{
@@ -813,7 +738,7 @@ function upgradeSmallBarnToMedium(){
       bonusKey:'medium_barn',
       title:'MEDIUM BARN!',
       icon:'🏛️',
-      body:'The small barn spans two tiles — room for more livestock.',
+      body:'Two animal pens and a barn interior — enter to arrange livestock and gear.',
       btnText:'GOT IT',
       cb:refreshMedium,
     });
@@ -828,6 +753,8 @@ function applyMediumBarnFreePlacedReady(cfg){
   applyBarnFreePlacedReady(cfg);
   cfg.size='medium';
   if(!cfg.orientation) cfg.orientation='h';
+  ensureBarnAnimalSlots(cfg);
+  if(typeof ensureBarnInterior==='function') ensureBarnInterior(cfg);
 }
 
 function placeMediumBarnPlotTile(x, y){
@@ -853,12 +780,7 @@ function placeMediumBarnPlotTile(x, y){
   cfg.orientation=placement.orientation;
   cfg.anchorX=placement.anchor.x;
   cfg.anchorY=placement.anchor.y;
-  if(!syncBarnFootprintCells(instanceId, tid)){
-    delete state.plotConfigs[instanceId];
-    showToast('No room for a medium barn — clear the neighboring tile(s) first.');
-    return false;
-  }
-  syncBarnCfgFromPlotCells(instanceId);
+  setPlotCell(placement.anchor.x, placement.anchor.y, { instanceId, typeId:tid });
   setActiveBarn(instanceId);
   scheduleSaveGame();
   if(typeof renderPlotGrid==='function') renderPlotGrid({ full:true });
@@ -871,31 +793,9 @@ function findLargeBarnPlacement(ax, ay){
 }
 
 function getLargeBarnPlacementBlockReason(ax, ay){
-  if(!isCoordInUnlockedPlot(ax, ay)){
-    return 'That plot tile is not unlocked yet.';
-  }
-  const tries=[
-    { orientation:'h', anchor:{ x:ax, y:ay } },
-    { orientation:'v', anchor:{ x:ax, y:ay } },
-    { orientation:'h', anchor:{ x:ax-1, y:ay } },
-    { orientation:'v', anchor:{ x:ax, y:ay-1 } },
-  ];
-  let sawLocked=false;
-  let sawOccupied=false;
-  for(const t of tries){
-    const offsets=getBarnFootprintOffsets(t.orientation,'large');
-    const cells=offsets.map(o=>({ x:t.anchor.x+o.dx, y:t.anchor.y+o.dy }));
-    if(cells.some(c=>!isCoordInUnlockedPlot(c.x,c.y))){ sawLocked=true; continue; }
-    if(cells.some(c=>getPlotCell(c.x,c.y))){ sawOccupied=true; continue; }
-    return null;
-  }
-  if(sawOccupied){
-    return 'No room for a large barn — clear the neighboring tile(s) first.';
-  }
-  if(sawLocked){
-    return 'No room for a large barn — unlock the neighboring plot tile(s) first.';
-  }
-  return 'No room for a large barn — you need two empty adjacent unlocked tiles.';
+  if(!isCoordInUnlockedPlot(ax, ay)) return 'That plot tile is not unlocked yet.';
+  if(getPlotCell(ax, ay)) return 'That tile is already occupied.';
+  return null;
 }
 
 function canPlaceLargeBarnAt(ax, ay){
@@ -935,12 +835,7 @@ function placeLargeBarnPlotTile(x, y){
   cfg.orientation=placement.orientation;
   cfg.anchorX=placement.anchor.x;
   cfg.anchorY=placement.anchor.y;
-  if(!syncBarnFootprintCells(instanceId, tid)){
-    delete state.plotConfigs[instanceId];
-    showToast('No room for a large barn — clear the neighboring tile(s) first.');
-    return false;
-  }
-  syncBarnCfgFromPlotCells(instanceId);
+  setPlotCell(placement.anchor.x, placement.anchor.y, { instanceId, typeId:tid });
   setActiveBarn(instanceId);
   scheduleSaveGame();
   if(typeof renderPlotGrid==='function') renderPlotGrid({ full:true });
@@ -949,18 +844,60 @@ function placeLargeBarnPlotTile(x, y){
 }
 
 function setBarnSlotTypeId(instanceId, typeId){
-  const cfg=getBarnConfig(instanceId);
-  if(isMultiTileBarn(cfg)){
-    syncBarnFootprintCells(instanceId, typeId);
-    return;
-  }
   const found=typeof findPlotSlotByInstanceId==='function'?findPlotSlotByInstanceId(instanceId):null;
-  if(found?.slot&&getPlotTileDef(typeId)) found.slot.typeId=typeId;
+  if(found?.slot&&getPlotTileDef(typeId)){
+    found.slot.typeId=typeId;
+    setPlotCell(found.x, found.y, { instanceId, typeId });
+  }
 }
 
 function getActiveBarnTypeId(){
   const found=typeof findPlotSlotByInstanceId==='function'?findPlotSlotByInstanceId(activeBarnInstanceId):null;
   return found?.slot?.typeId||'small_barn';
+}
+
+function collapseBarnFootprintsToSingleTile(){
+  if(!state.plot?.cells) return;
+  const byInstance=new Map();
+  forEachPlotOccupied((x,y,slot)=>{
+    if(!slot?.instanceId||getPlotInstanceBehavior(slot.instanceId)!=='barn') return;
+    if(!byInstance.has(slot.instanceId)) byInstance.set(slot.instanceId, []);
+    byInstance.get(slot.instanceId).push({ x, y });
+  });
+  byInstance.forEach((cells, instanceId)=>{
+    let cfg=getBarnConfig(instanceId);
+    if(!cfg&&cells.length){
+      const slot=getPlotCell(cells[0].x, cells[0].y);
+      if(slot?.typeId&&typeof ensureBarnPlotConfig==='function'){
+        cfg=ensureBarnPlotConfig(instanceId, slot.typeId);
+      }
+    }
+    if(!cfg){
+      return;
+    }
+    let anchor=null;
+    if(cfg.anchorX!=null&&cfg.anchorY!=null
+      &&cells.some(c=>c.x===cfg.anchorX&&c.y===cfg.anchorY)){
+      anchor={ x:cfg.anchorX|0, y:cfg.anchorY|0 };
+    }
+    if(!anchor){
+      for(const c of cells){
+        const el=typeof getPlotCellElement==='function'?getPlotCellElement(c.x,c.y):null;
+        if(el?.dataset?.barnAnchor==='1'){ anchor={ x:c.x, y:c.y }; break; }
+      }
+    }
+    if(!anchor){
+      const sorted=[...cells].sort((a,b)=>a.y-b.y||a.x-b.x);
+      anchor={ x:sorted[0].x, y:sorted[0].y };
+    }
+    cfg.anchorX=anchor.x;
+    cfg.anchorY=anchor.y;
+    const tid=getBarnPlotTypeId(cfg);
+    cells.forEach(c=>{
+      if(c.x===anchor.x&&c.y===anchor.y) setPlotCell(c.x,c.y,{ instanceId, typeId:tid });
+      else setPlotCell(c.x,c.y,null);
+    });
+  });
 }
 
 function migrateBarn(){
@@ -970,39 +907,27 @@ function migrateBarn(){
   if(state.mediumBarnUnlocked==null) state.mediumBarnUnlocked=false;
   if(state.largeBarnUnlocked==null) state.largeBarnUnlocked=false;
   scrubMisassignedPlotConfigs();
-  if(typeof pruneAllMultiTileBarnFootprints==='function') pruneAllMultiTileBarnFootprints();
-  const synced=new Set();
-  forEachPlotOccupied((x,y,slot)=>{
-    if(!slot?.instanceId||synced.has(slot.instanceId)) return;
-    const cfg=getBarnConfig(slot.instanceId);
-    if(!cfg||!isMultiTileBarn(cfg)) return;
-    synced.add(slot.instanceId);
-    syncBarnCfgFromPlotCells(slot.instanceId);
-    enforceMediumBarnFootprint(slot.instanceId, cfg);
-  });
+  collapseBarnFootprintsToSingleTile();
   forEachBarnInstance((x,y,slot)=>{
     const cfg=ensureBarnPlotConfig(slot.instanceId, slot.typeId);
     if(!cfg) return;
+    cfg.anchorX=x;
+    cfg.anchorY=y;
     if(slot.typeId==='large_barn_complete'||cfg.size==='large'){
       cfg.size='large';
       cfg.complete=true;
       ensureBarnInterior(cfg);
       state.largeBarnUnlocked=true;
-      const plotType=barnPlotTypeIdOnInstance(slot.instanceId);
-      if(plotType!=='large_barn_complete'){
-        syncBarnFootprintCells(slot.instanceId, getLargeBarnTypeId());
-      }else{
-        repairMediumBarnFootprint(slot.instanceId, cfg);
-      }
+      if(slot.typeId!==getLargeBarnTypeId()) slot.typeId=getLargeBarnTypeId();
     }else if(slot.typeId==='medium_barn_complete'){
       cfg.size='medium';
       cfg.complete=true;
       state.mediumBarnUnlocked=true;
+      if(typeof ensureBarnInterior==='function') ensureBarnInterior(cfg);
     }
-    if(cfg.size==='medium'){
-      state.mediumBarnUnlocked=true;
-      repairMediumBarnFootprint(slot.instanceId, cfg);
-    }
+    if(getBarnStage(cfg)==='complete'&&typeof ensureBarnInterior==='function') ensureBarnInterior(cfg);
+    clampBarnTroughStock(cfg);
+    if(cfg.size==='medium') state.mediumBarnUnlocked=true;
     const stage=getBarnStage(cfg);
     if(isBarnFrameComplete(cfg)) state.barnWallsUnlocked=true;
     if(isBarnRoofComplete(cfg)) state.barnDoorlessUnlocked=true;
@@ -1011,7 +936,11 @@ function migrateBarn(){
       const expectedType=getBarnTypeIdForStage(stage);
       if(slot.typeId!==expectedType&&getPlotTileDef(expectedType)) slot.typeId=expectedType;
     }
+    if(getBarnStage(cfg)==='complete'){
+      processBarnFeedCatchUp(cfg);
+    }
   });
+  if(typeof migrateFeatherPocket==='function') migrateFeatherPocket();
   migrateBarnArchitectureXp();
 }
 
@@ -1073,6 +1002,8 @@ function completeBarn(instanceId){
   cfg.roofed=true;
   cfg.complete=true;
   unlockBarns();
+  ensureBarnAnimalSlots(cfg);
+  if(typeof ensureBarnInterior==='function') ensureBarnInterior(cfg);
   setBarnSlotTypeId(instanceId, 'small_barn_complete');
   scheduleSaveGame();
   const refresh=()=>{
@@ -1256,6 +1187,8 @@ function openBarnScreen(){
 }
 
 function closeBarnScreen(){
+  barnTroughPreviewExpanded=false;
+  if(typeof closeBarnTroughMenu==='function') closeBarnTroughMenu();
   if(typeof closeBarnInteriorPlaceMenu==='function') closeBarnInteriorPlaceMenu();
   stopBarnTimer();
   if(lastHome==='barn-interior-screen'&&activeBarnInteriorInstanceId&&typeof openBarnInterior==='function'){
@@ -1429,6 +1362,8 @@ function refreshBarnLiveUI(cfg){
   if(!cfg) return;
   if(currentScreen==='barn-screen'){
     renderBarnAnimalSlots(cfg);
+    const troughEl=document.getElementById('barn-trough-section');
+    if(troughEl) troughEl.innerHTML=renderBarnTroughSection(cfg);
     renderBarnAnimalPanel(cfg);
     renderBarnAnimalStatus(cfg);
   }
@@ -1456,6 +1391,7 @@ function startBarnTimer(){
     if(barnAnyAnimalFeeding(cfg)||hadFeeding){
       refreshBarnLiveUI(cfg);
     }
+    if(processBarnTroughAutoFeed(cfg)&&currentScreen==='barn-screen') renderBarnScreen();
     if(!barnAnyAnimalFeeding(cfg)){
       if(currentScreen==='barn-screen') renderBarnScreen();
       stopBarnTimer();
@@ -1464,13 +1400,30 @@ function startBarnTimer(){
   },1000);
 }
 
+function barnFeathersInBarnStorage(cfg){
+  return barnStoredProduceTotal(cfg,'feathers');
+}
+
+function barnFeathersCountedTowardCap(cfg){
+  const feathers=barnFeathersInBarnStorage(cfg);
+  const pocketFree=typeof getFeatherPocketFreeSpace==='function'?getFeatherPocketFreeSpace():0;
+  return Math.max(0, feathers-pocketFree);
+}
+
+function barnEffectiveStorageCap(cfg){
+  const base=typeof barnStorageCap==='function'?barnStorageCap(cfg):50;
+  const pocketCap=typeof getEquippedFeatherPocketCap==='function'?getEquippedFeatherPocketCap():0;
+  return base+pocketCap;
+}
+
 function barnStorageTotal(cfg){
   ensureBarnStoredLoot(cfg);
-  return BARN_ANIMAL_ORDER.reduce((sum,k)=>{
-    const loot=cfg.storedLoot[k];
-    if(!loot) return sum;
-    return sum+(BARN_STORAGE_PRODUCE_KEYS||[]).reduce((s,pk)=>s+barnStoredLootCount(loot,pk),0);
-  },0);
+  let total=0;
+  (BARN_STORAGE_PRODUCE_KEYS||[]).forEach(pk=>{
+    if(pk==='feathers') total+=barnFeathersCountedTowardCap(cfg);
+    else total+=barnStoredProduceTotal(cfg,pk);
+  });
+  return total;
 }
 
 function barnInteriorStorageBonus(cfg){
@@ -1554,22 +1507,28 @@ function barnPrimaryAnimalType(cfg){
   return slot?.type||null;
 }
 
-function adoptBarnAnimal(animalKey){
-  const cfg=getBarnConfig(activeBarnInstanceId);
+let pendingBarnAdoptPenSlot=null;
+
+function activeBarnMenuInstanceId(){
+  return activeBarnInteriorInstanceId||activeBarnInstanceId;
+}
+
+function adoptBarnAnimal(animalKey, slotIdx){
+  const instanceId=activeBarnMenuInstanceId();
+  const cfg=getBarnConfig(instanceId);
   if(!cfg) return;
   ensureBarnAnimalSlots(cfg);
-  const slotIdx=barnFirstEmptyAnimalSlotIndex(cfg);
+  if(typeof slotIdx!=='number'||slotIdx<0) slotIdx=barnFirstEmptyAnimalSlotIndex(cfg);
   if(slotIdx<0){
     showToast('All animal slots are full.');
     return;
   }
-  const def=getBarnAnimalDef(animalKey);
-  if(!def) return;
-  if(!isBarnAnimalAllowedAtBarn(animalKey, cfg)){
-    const need=def.minBarnSize==='medium'?'medium':'small';
-    showToast('A '+def.name.toLowerCase()+' needs a '+need+' barn or larger.');
+  if(cfg.animalSlots[slotIdx]?.type){
+    showToast('That pen is already occupied.');
     return;
   }
+  const def=getBarnAnimalDef(animalKey);
+  if(!def) return;
   if(!isBarnAnimalUnlocked(animalKey)){
     showToast('Reach Husbandry Lv '+def.unlockLevel+' to adopt a '+def.name.toLowerCase()+'.');
     return;
@@ -1584,9 +1543,266 @@ function adoptBarnAnimal(animalKey){
   }
   cfg.animalSlots[slotIdx]={ type:animalKey, feedEndsAt:null };
   scheduleSaveGame();
+  if(typeof closeBarnAdoptMenu==='function') closeBarnAdoptMenu();
   showToast(def.icon+' '+def.name+' moved into the barn!');
   renderBarnScreen();
+  if(typeof syncBarnInteriorPenAnimals==='function') syncBarnInteriorPenAnimals(cfg);
+  if(typeof renderBarnInteriorGrid==='function'&&activeBarnInteriorInstanceId===instanceId) renderBarnInteriorGrid();
   syncUI();
+}
+
+let barnAdoptMenuCloser=null;
+
+function closeBarnAdoptMenu(){
+  document.getElementById('barn-int-adopt-menu')?.remove();
+  if(barnAdoptMenuCloser){
+    document.removeEventListener('pointerdown', barnAdoptMenuCloser, true);
+    barnAdoptMenuCloser=null;
+  }
+}
+
+function bindBarnAdoptMenuCloser(){
+  if(barnAdoptMenuCloser){
+    document.removeEventListener('pointerdown', barnAdoptMenuCloser, true);
+    barnAdoptMenuCloser=null;
+  }
+  setTimeout(()=>{
+    barnAdoptMenuCloser=function(e){
+      const menu=document.getElementById('barn-int-adopt-menu');
+      if(!menu){
+        document.removeEventListener('pointerdown', barnAdoptMenuCloser, true);
+        barnAdoptMenuCloser=null;
+        return;
+      }
+      if(menu.contains(e.target)) return;
+      closeBarnAdoptMenu();
+    };
+    document.addEventListener('pointerdown', barnAdoptMenuCloser, true);
+  }, 80);
+}
+
+function openBarnAdoptMenu(penSlotIdx){
+  const instanceId=activeBarnMenuInstanceId();
+  const cfg=getBarnConfig(instanceId);
+  if(!cfg) return;
+  ensureBarnAnimalSlots(cfg);
+  if(typeof penSlotIdx!=='number'||penSlotIdx<0) penSlotIdx=barnFirstEmptyAnimalSlotIndex(cfg);
+  if(penSlotIdx<0){
+    showToast('All animal pens are full.');
+    return;
+  }
+  if(cfg.animalSlots[penSlotIdx]?.type){
+    showToast('That pen is already occupied.');
+    return;
+  }
+  closeBarnAdoptMenu();
+  if (typeof closeBarnInteriorPlaceMenu === 'function') closeBarnInteriorPlaceMenu();
+  const w=document.getElementById('game-wrapper');
+  if(!w) return;
+  const m=document.createElement('div');
+  m.id='barn-int-adopt-menu';
+  m.className='plot-add-menu barn-menu';
+  m.onclick=(e)=>e.stopPropagation();
+  const options=renderBarnAdoptOptions(cfg, penSlotIdx);
+  if(!options){
+    showToast('No animals available yet — raise Husbandry level.');
+    return;
+  }
+  m.innerHTML='<div class="plot-add-title">Add animal</div>'
+    +'<div class="plot-add-sub">Pen '+(penSlotIdx+1)+' — pick livestock for this pen.</div>'
+    +'<div class="plot-add-items barn-adopt-items">'+options+'</div>'
+    +'<button type="button" class="plot-add-cancel" onclick="closeBarnAdoptMenu()">cancel</button>';
+  w.appendChild(m);
+  bindBarnAdoptMenuCloser();
+}
+
+function barnOpenInteriorForPen(slotIdx){
+  pendingBarnAdoptPenSlot=slotIdx;
+  openBarnInterior(activeBarnInstanceId);
+}
+
+function ensureBarnTroughStock(cfg){
+  if(!cfg) return;
+  if(!cfg.troughStock||typeof cfg.troughStock!=='object') cfg.troughStock={};
+  if(typeof BARN_TROUGH_FOOD_KEYS!=='undefined'){
+    BARN_TROUGH_FOOD_KEYS.forEach(fk=>{
+      if(cfg.troughStock[fk]==null) cfg.troughStock[fk]=0;
+    });
+  }
+  if(cfg.troughAutoFeed==null) cfg.troughAutoFeed=false;
+}
+
+function clampBarnTroughStock(cfg){
+  if(!cfg) return;
+  ensureBarnTroughStock(cfg);
+  if(typeof barnTroughFoodCapPerType!=='function') return;
+  const caps=barnTroughFoodCapPerType(cfg.barnInterior);
+  (BARN_TROUGH_FOOD_KEYS||[]).forEach(fk=>{
+    cfg.troughStock[fk]=Math.min(cfg.troughStock[fk]|0, caps[fk]|0);
+  });
+}
+
+function barnHasTroughCapacity(cfg){
+  const summary=typeof barnTroughCapacitySummary==='function'
+    ?barnTroughCapacitySummary(cfg?.barnInterior)
+    :{ hasTroughs:false };
+  return !!summary.hasTroughs;
+}
+
+function barnFoodAvailableForFeed(cfg, foodKey, amount){
+  ensureBarnTroughStock(cfg);
+  const need=Math.max(1, amount|0);
+  if((cfg.troughStock[foodKey]|0)>=need) return true;
+  return itemCountBagAndStore(foodKey)>=need;
+}
+
+function barnConsumeFoodForFeed(cfg, food){
+  const need=Math.max(1, food.amount|0);
+  ensureBarnTroughStock(cfg);
+  const key=food.key;
+  const inTrough=cfg.troughStock[key]|0;
+  if(inTrough>=need){
+    cfg.troughStock[key]=inTrough-need;
+    recordBarnTroughFoodUse(cfg, key);
+    return true;
+  }
+  if(itemCountBagAndStore(key)<need) return false;
+  if(!consumeManyFromBagOrStore(key, need)) return false;
+  recordBarnTroughFoodUse(cfg, key);
+  return true;
+}
+
+function recordBarnTroughFoodUse(cfg, foodKey){
+  if(!cfg||!foodKey) return;
+  if(!cfg.troughRecentFoods) cfg.troughRecentFoods=[];
+  cfg.troughRecentFoods=cfg.troughRecentFoods.filter(k=>k!==foodKey);
+  cfg.troughRecentFoods.unshift(foodKey);
+  if(cfg.troughRecentFoods.length>12) cfg.troughRecentFoods.length=12;
+}
+
+function processBarnTroughAutoFeed(cfg){
+  if(!cfg?.troughAutoFeed||!barnHasAnyAnimal(cfg)) return false;
+  if(barnStorageFull(cfg)) return false;
+  processBarnFeedCatchUp(cfg);
+  const hungry=cfg.animalSlots.filter(s=>s?.type&&!barnIsSlotFeeding(s));
+  if(!hungry.length) return false;
+  let fed=0;
+  hungry.forEach(slot=>{
+    const def=getBarnAnimalDef(slot.type);
+    if(!def) return;
+    const food=typeof getBarnAnimalPrimaryFood==='function'?getBarnAnimalPrimaryFood(def):{ key:'wheat', amount:1 };
+    if(!barnConsumeFoodForFeed(cfg, food)) return;
+    slot.feedEndsAt=Date.now()+def.feedMs;
+    fed++;
+  });
+  if(fed>0) scheduleSaveGame();
+  return fed>0;
+}
+
+function fillBarnTroughFromBag(){
+  const cfg=getBarnConfig(activeBarnInstanceId);
+  if(!cfg) return;
+  if(!barnHasTroughCapacity(cfg)){
+    showToast('Place a trough inside the barn first.');
+    return;
+  }
+  const summary=barnTroughCapacitySummary(cfg.barnInterior);
+  ensureBarnTroughStock(cfg);
+  let moved=0;
+  (BARN_TROUGH_FOOD_KEYS||[]).forEach(fk=>{
+    const cap=summary.perTypeCap|0;
+    const room=Math.max(0, cap-(cfg.troughStock[fk]|0));
+    if(room<1) return;
+    const take=Math.min(room, itemCountBagAndStore(fk));
+    if(take<1) return;
+    if(!consumeManyFromBagOrStore(fk, take)) return;
+    cfg.troughStock[fk]=(cfg.troughStock[fk]|0)+take;
+    moved+=take;
+  });
+  clampBarnTroughStock(cfg);
+  scheduleSaveGame();
+  if(moved<1) showToast('No feed in bag or storage, or troughs are full.');
+  else showToast('Added '+moved+' feed to the trough.');
+  renderBarnScreen();
+  syncUI();
+}
+
+function toggleBarnTroughAutoFeed(){
+  const cfg=getBarnConfig(activeBarnInstanceId);
+  if(!cfg) return;
+  ensureBarnTroughStock(cfg);
+  cfg.troughAutoFeed=!cfg.troughAutoFeed;
+  scheduleSaveGame();
+  if(cfg.troughAutoFeed) processBarnTroughAutoFeed(cfg);
+  showToast(cfg.troughAutoFeed?'Auto-feed on — hungry animals eat from the trough or bag.':'Auto-feed off.');
+  renderBarnScreen();
+  if(cfg.troughAutoFeed) startBarnTimer();
+  syncUI();
+}
+
+function closeBarnTroughMenu(){
+  document.getElementById('barn-trough-menu')?.remove();
+}
+
+function openBarnTroughMenu(){
+  closeBarnTroughMenu();
+  const cfg=getBarnConfig(activeBarnInstanceId);
+  if(!cfg) return;
+  ensureBarnTroughStock(cfg);
+  const w=document.getElementById('game-wrapper');
+  if(!w) return;
+  const m=document.createElement('div');
+  m.id='barn-trough-menu';
+  m.className='plot-add-menu barn-trough-menu barn-menu';
+  m.onclick=(e)=>e.stopPropagation();
+  const summary=typeof barnTroughCapacitySummary==='function'
+    ?barnTroughCapacitySummary(cfg.barnInterior)
+    :{ hasTroughs:false, perTypeCap:0, parts:[] };
+  let capHtml='';
+  if(summary.hasTroughs){
+    capHtml='<p class="barn-trough-menu-cap">'
+      +(summary.parts.length?summary.parts.join(' · ')+' — ':'')
+      +summary.perTypeCap+' max per feed type</p>';
+  }else{
+    capHtml='<p class="barn-trough-menu-cap barn-trough-menu-cap--warn">No trough placed — add copper, bronze, or iron troughs inside the barn.</p>';
+  }
+  const stockLines=(BARN_TROUGH_FOOD_KEYS||[]).map(fk=>{
+    const foodDef=BARN_ANIMAL_FOODS[fk];
+    const label=foodDef?.name||fk;
+    const stock=cfg.troughStock[fk]|0;
+    const cap=summary.perTypeCap|0;
+    return '<div class="barn-trough-menu-stock">'+label+': <strong>'+stock+'</strong>/'+cap+'</div>';
+  }).join('');
+  const animalLines=typeof barnGroupedAnimalTroughLines==='function'
+    ?barnGroupedAnimalTroughLines(cfg, cfg.troughStock)
+    :[];
+  const dietHtml=animalLines.length
+    ?('<div class="barn-trough-menu-diet">'+animalLines.map(l=>'<div class="barn-trough-menu-animal">'+l+'</div>').join('')+'</div>')
+    :'<p class="barn-trough-menu-empty">No livestock in this barn.</p>';
+  const autoOn=!!cfg.troughAutoFeed;
+  const menuCap=summary.perTypeCap|0;
+  m.innerHTML='<div class="plot-add-title">Trough'+(menuCap>0?' ('+menuCap+' per type max)':'')+'</div>'
+    +capHtml
+    +'<div class="store-items-title">TROUGH STOCK</div>'
+    +'<div class="barn-trough-menu-stocks">'+stockLines+'</div>'
+    +'<div class="store-items-title">LIVESTOCK</div>'
+    +dietHtml
+    +'<div class="barn-trough-menu-actions">'
+    +'<button type="button" class="wb-btn once" onclick="toggleBarnTroughAutoFeed();closeBarnTroughMenu()">'
+    +(autoOn?'✓ Auto-feed ON':'Auto-feed OFF')+'</button>'
+    +'<button type="button" class="wb-btn once" onclick="fillBarnTroughFromBag();closeBarnTroughMenu()">Fill from bag</button>'
+    +'<button type="button" class="wb-btn once" onclick="feedAllBarnAnimals();closeBarnTroughMenu()">Feed hungry</button>'
+    +'</div>'
+    +'<button type="button" class="plot-add-cancel" onclick="closeBarnTroughMenu()">close</button>';
+  w.appendChild(m);
+  setTimeout(()=>{
+    document.addEventListener('click', barnTroughMenuOutsideClick, { once:true });
+  }, 0);
+}
+
+function barnTroughMenuOutsideClick(e){
+  const menu=document.getElementById('barn-trough-menu');
+  if(menu&&!menu.contains(e.target)) closeBarnTroughMenu();
 }
 
 function feedAllBarnAnimals(){
@@ -1594,7 +1810,7 @@ function feedAllBarnAnimals(){
   if(!cfg||!barnHasAnyAnimal(cfg)) return;
   processBarnFeedCatchUp(cfg);
   if(barnStorageFull(cfg)){
-    showToast('Barn storage is full ('+barnStorageCap(cfg)+') — collect first.');
+    showToast('Barn storage is full ('+barnEffectiveStorageCap(cfg)+') — collect first.');
     renderBarnScreen();
     return;
   }
@@ -1609,14 +1825,12 @@ function feedAllBarnAnimals(){
     const def=getBarnAnimalDef(slot.type);
     if(!def) return;
     const food=typeof getBarnAnimalPrimaryFood==='function'?getBarnAnimalPrimaryFood(def):{ key:'wheat', amount:1 };
-    const need=food.amount|0;
-    if(itemCountBagAndStore(food.key)<need) return;
-    if(!consumeManyFromBagOrStore(food.key, need)) return;
+    if(!barnConsumeFoodForFeed(cfg, food)) return;
     slot.feedEndsAt=Date.now()+def.feedMs;
     fed++;
   });
   if(fed<1){
-    showToast('Need feed.');
+    showToast('Need feed in the trough or bag.');
     renderBarnScreen();
     return;
   }
@@ -1669,7 +1883,38 @@ function invAddBarnProduceKey(produceKey, count){
   if(count<1) return;
   const def=typeof barnProduceDef==='function'?barnProduceDef(produceKey):BARN_ANIMAL_PRODUCE[produceKey];
   if(!def||def.internal) return;
-  invAdd(produceKey, def.icon, def.name, count);
+  const invKey=typeof barnInventoryKeyForStoredProduce==='function'
+    ?barnInventoryKeyForStoredProduce(produceKey)
+    :(def.key||produceKey);
+  invAdd(invKey, def.icon, def.name, count);
+}
+
+function barnCollectWithdrawPlan(cfg){
+  const plan={ items:[], shortfall:[] };
+  let invRoom=Math.max(0, getInvCap()-invTotal());
+  let pocketRoom=typeof getFeatherPocketFreeSpace==='function'?getFeatherPocketFreeSpace():0;
+  (BARN_STORAGE_PRODUCE_KEYS||[]).forEach(pk=>{
+    const n=barnStoredProduceTotal(cfg,pk);
+    if(n<1||pk==='milk') return;
+    let canTake=0;
+    if(pk==='feathers'){
+      const toPocket=Math.min(n, pocketRoom);
+      pocketRoom-=toPocket;
+      const rest=Math.min(n-toPocket, invRoom);
+      invRoom-=rest;
+      canTake=toPocket+rest;
+    }else{
+      canTake=Math.min(n, invRoom);
+      invRoom-=canTake;
+    }
+    plan.items.push({ pk, n, canTake });
+    if(canTake<n){
+      const def=barnProduceDef(pk);
+      const label=(def?.name||pk).toLowerCase();
+      plan.shortfall.push((n-canTake)+' '+label);
+    }
+  });
+  return plan;
 }
 
 function collectAllBarnStorage(){
@@ -1681,32 +1926,94 @@ function collectAllBarnStorage(){
     renderBarnScreen();
     return;
   }
+  const plan=barnCollectWithdrawPlan(cfg);
+  if(plan.items.every(i=>i.canTake<1)){
+    showToast('Not enough inventory space — free bag slots'
+      +(typeof getEquippedFeatherPocketCap==='function'&&getEquippedFeatherPocketCap()>0?' or feather pocket room':'')
+      +'.');
+    renderBarnScreen();
+    return;
+  }
   const xp=barnStoredCollectXpTotal(cfg);
   const bits=[];
   const milkTotal=barnStoredProduceTotal(cfg,'milk');
   if(milkTotal>0) collectBarnMilkUnits(milkTotal);
+  let partial=false;
   (BARN_STORAGE_PRODUCE_KEYS||[]).forEach(pk=>{
     if(pk==='milk') return;
-    const n=barnStoredProduceTotal(cfg,pk);
-    if(n<1) return;
-    invAddBarnProduceKey(pk, n);
+    const row=plan.items.find(i=>i.pk===pk);
+    if(!row||row.n<1) return;
+    if(row.canTake<1){
+      if(row.n>0) partial=true;
+      return;
+    }
+    if(pk==='feathers'){
+      const total=row.n;
+      const toPocket=typeof tryAddFeathersToPocket==='function'?tryAddFeathersToPocket(total):0;
+      const rest=total-toPocket;
+      let toInv=0;
+      if(rest>0&&typeof tryAddFeathersToInventory==='function'){
+        toInv=tryAddFeathersToInventory(rest, invTotal());
+      }
+      const moved=toPocket+toInv;
+      if(moved>0){
+        barnRemoveStoredProduce(cfg,'feathers', moved);
+        bits.push(moved+'× 🪶');
+      }
+      if(moved<total) partial=true;
+      return;
+    }
+    invAddBarnProduceKey(pk, row.canTake);
     const def=barnProduceDef(pk)||BARN_ANIMAL_PRODUCE[pk];
-    if(def) bits.push(n+'× '+def.icon);
+    if(def) bits.push(row.canTake+'× '+def.icon);
+    if(row.canTake<row.n){
+      barnRemoveStoredProduce(cfg, pk, row.n-row.canTake);
+      partial=true;
+    }else{
+      barnClearStoredProduceType(cfg, pk);
+    }
   });
   const earthShards=grantBarnPocketEarthShards(cfg);
   if(earthShards>0){
     const m=typeof SHARD_META!=='undefined'?SHARD_META.earth:{ icon:'🌿', name:'Earth Shard' };
     bits.push(earthShards+'× '+m.icon);
   }
-  clearBarnStoredLoot(cfg);
+  if(!partial&&!barnHasStoredProduce(cfg)){
+    clearBarnStoredLoot(cfg);
+  }
   if(xp>0) grantXP('husbandry', xp, null);
   scheduleSaveGame();
-  showToast(
-    (bits.length?'Collected '+bits.join(', '):'Collected barn goods')
-    +(xp?(' · +'+xp+' Husbandry'):'')
-  );
+  let msg=bits.length?'Collected '+bits.join(', '):'Collected barn goods';
+  if(plan.shortfall.length){
+    msg+=' — could not take '+plan.shortfall.join(', ')+' (bag full).';
+  }
+  if(xp) msg+=' · +'+xp+' Husbandry';
+  showToast(msg);
   renderBarnScreen();
   syncUI();
+}
+
+function barnClearStoredProduceType(cfg, produceKey){
+  ensureBarnStoredLoot(cfg);
+  BARN_ANIMAL_ORDER.forEach(k=>{
+    if(cfg.storedLoot[k]) cfg.storedLoot[k][produceKey]=0;
+  });
+  syncBarnStoredTotals(cfg);
+}
+
+function barnRemoveStoredProduce(cfg, produceKey, amount){
+  let left=amount|0;
+  if(left<1) return;
+  ensureBarnStoredLoot(cfg);
+  BARN_ANIMAL_ORDER.forEach(k=>{
+    if(left<1) return;
+    const loot=cfg.storedLoot[k];
+    if(!loot) return;
+    const take=Math.min(left, barnStoredLootCount(loot, produceKey));
+    loot[produceKey]=(barnStoredLootCount(loot, produceKey)-take);
+    left-=take;
+  });
+  syncBarnStoredTotals(cfg);
 }
 
 function barnAnimalSlotTap(slotIdx){
@@ -1898,8 +2205,8 @@ function upgradeMediumBarnToLarge(){
     return;
   }
   applyLargeBarnOnSlot(plotSlot, cfg);
-  syncBarnFootprintCells(instanceId, getLargeBarnTypeId());
-  syncBarnCfgFromPlotCells(instanceId);
+  const found=typeof findPlotSlotByInstanceId==='function'?findPlotSlotByInstanceId(instanceId):null;
+  if(found) setPlotCell(found.x, found.y, { instanceId, typeId:getLargeBarnTypeId() });
   if(typeof plotLastBarnOverlayKey!=='undefined') plotLastBarnOverlayKey='';
   if(typeof renderPlotGrid==='function') renderPlotGrid({ full:true });
   else if(typeof refreshBarnPlotOverlays==='function') refreshBarnPlotOverlays();
@@ -1948,15 +2255,8 @@ function renderBarnLargeUpgradeSection(cfg){
     +'</button></div></div></div>';
 }
 
-function renderBarnEnterActions(cfg){
-  if(!isLargeBarn(cfg)) return '';
-  return '<div class="wb-use-box barn-enter-actions">'
-    +'<button type="button" class="wb-btn once" onclick="openBarnInterior()">🏛️ ENTER BARN</button>'
-    +'</div>';
-}
-
 function renderBarnUpgradeSection(cfg){
-  if(!cfg||isMultiTileBarn(cfg)||getBarnStage(cfg)!=='complete') return '';
+  if(!cfg||isMediumBarn(cfg)||isLargeBarn(cfg)||getBarnStage(cfg)!=='complete') return '';
   const archOk=(Number(state.skills.architecture?.level)||1)>=BARN_MEDIUM_ARCH_UNLOCK;
   const matsOk=barnUpgradeMaterialsMet();
   const spaceOk=hasBarnUpgradeSpace(activeBarnInstanceId);
@@ -1974,7 +2274,7 @@ function renderBarnUpgradeSection(cfg){
     +'<button type="button" class="wb-btn once barn-upgrade-btn" '
     +(btnDisabled?'disabled':'')+' onclick="upgradeSmallBarnToMedium()">'
     +'🏛️ UPGRADE SMALL BARN'
-    +'<span class="wb-btn-sub">spans 2 tiles · 2 animal slots</span>'
+    +'<span class="wb-btn-sub">2 animal pens · barn interior</span>'
     +'</button></div></div></div>';
 }
 
@@ -1993,7 +2293,7 @@ function confirmRemoveMediumBarn(instanceId){
   showChoiceBanner(
     'Clear '+barnName.toLowerCase()+'?',
     def.icon||'🏛️',
-    'Remove '+barnName.toLowerCase()+'? Both tiles will be cleared — nothing is lost forever.',
+    'Remove '+barnName.toLowerCase()+'? Nothing is lost forever.',
     'Clear barn',
     'Keep it',
     ()=>removeMediumBarnFromPlot(instanceId)
@@ -2187,34 +2487,51 @@ function moveBarnFootprint(instanceId, newAnchorX, newAnchorY){
   return true;
 }
 
-function renderBarnAdoptOptions(cfg){
+function barnAdoptOptionDropsHtml(def, animalKey){
+  const food=typeof getBarnAnimalPrimaryFood==='function'?getBarnAnimalPrimaryFood(def):{ key:'wheat', amount:1, label:'wheat' };
+  const adoptStock=itemCountBagAndStore(def.adoptCostKey);
+  const foodStock=itemCountBagAndStore(food.key);
+  const adoptLabel=def.adoptCostLabel||def.adoptCostKey;
+  const eatLabel=food.amount>1?(food.amount+'× '+food.label):food.label;
+  const parts=[
+    formatRecipeMatLine(adoptLabel, def.adoptCostAmount, adoptStock),
+    formatRecipeMatLine(eatLabel, food.amount, foodStock),
+  ];
+  const produce=barnAnimalProducesText(animalKey);
+  if(produce) parts.push('Produces: '+produce);
+  const secs=barnAnimalFeedSeconds(animalKey);
+  if(secs) parts.push(secs+'s feed cycle');
+  return parts.join(' · ');
+}
+
+function renderBarnAdoptOptions(cfg, penSlotIdx){
+  const slotArg=typeof penSlotIdx==='number'?penSlotIdx:-1;
   return BARN_ANIMAL_ORDER.map(key=>{
     const def=getBarnAnimalDef(key);
     if(!def) return '';
-    if(typeof isBarnAnimalAllowedAtBarn==='function'&&!isBarnAnimalAllowedAtBarn(key, cfg)) return '';
     const unlocked=isBarnAnimalUnlocked(key);
     const adoptStock=itemCountBagAndStore(def.adoptCostKey);
     const canPay=adoptStock>=def.adoptCostAmount;
     const disabled=!unlocked||!canPay;
-    return '<button type="button" class="wb-mat-option kiln-recipe-option barn-adopt-option'+(!unlocked?' unavail':'')+'" '
-      +(disabled?'disabled':'')+' onclick="adoptBarnAnimal(\''+key+'\')">'
-      +'<span class="wb-mat-icon">'+def.icon+'</span>'
-      +'<span class="wb-mat-info">'
-      +barnAnimalTitleHtml(key)
-      +barnAnimalAdoptLineHtml(def)
-      +barnAnimalEatsLineHtml(key)
-      +barnAnimalProducesLineHtml(key)
+    const onclick=disabled?'':' onclick="adoptBarnAnimal(\''+key+'\','+slotArg+')"';
+    return '<button type="button" class="plot-add-item barn-adopt-item'+(!unlocked||!canPay?' unavail':'')+'"'
+      +(disabled?' disabled':'')+onclick+'>'
+      +'<span class="plot-add-item-icon">'+def.icon+'</span>'
+      +'<span class="plot-add-item-name">'
+      +'<span class="plot-add-item-title-row">'
+      +'<span class="plot-add-item-title">'+def.name+'</span>'
+      +barnHusbandryLevelBadge(def.unlockLevel)
       +'</span>'
-      +barnHusbandryLevelBadges(def.unlockLevel)
-      +'</button>';
+      +'<span class="plot-add-item-drops">'+barnAdoptOptionDropsHtml(def, key)+'</span>'
+      +'</span></button>';
   }).join('');
 }
 
 function renderBarnAnimalSlotCell(slot, slotIdx){
   if(!slot?.type){
-    return '<div class="barn-animal-slot empty">'
-      +'<div class="barn-animal-slot-empty-label">empty</div>'
-      +'</div>';
+    return '<button type="button" class="barn-animal-slot empty" onclick="barnOpenInteriorForPen('+slotIdx+')" title="Add inside the barn">'
+      +'<span class="barn-animal-slot-add-icon">＋</span>'
+      +'</button>';
   }
   const def=getBarnAnimalDef(slot.type);
   const feeding=barnIsSlotFeeding(slot);
@@ -2257,7 +2574,7 @@ function renderBarnStoragePanel(cfg){
 function renderBarnStorage(cfg){
   migrateBarnStoredLoot(cfg);
   const total=barnStorageTotal(cfg);
-  const cap=barnStorageCap(cfg);
+  const cap=barnEffectiveStorageCap(cfg);
   const xpTotal=barnStoredCollectXpTotal(cfg);
   let chips='';
   (BARN_STORAGE_PRODUCE_KEYS||[]).forEach(pk=>{
@@ -2266,7 +2583,10 @@ function renderBarnStorage(cfg){
     const def=barnProduceDef(pk)||BARN_ANIMAL_PRODUCE[pk];
     if(!def||pk==='milk') return;
     const label=def.name.toLowerCase();
-    chips+='<div class="barn-produce-chip">'+def.icon+' '+n+'× '+label+'</div>';
+    const pocketHint=pk==='feathers'
+      ? ' <span class="barn-milk-hint">(go to pocket)</span>'
+      : '';
+    chips+='<div class="barn-produce-chip">'+def.icon+' '+n+'× '+label+pocketHint+'</div>';
   });
   const milk=barnStoredProduceTotal(cfg,'milk');
   if(milk>0){
@@ -2283,39 +2603,214 @@ function renderBarnStorage(cfg){
     chips='<div class="barn-storage-empty">Nothing stored yet — feed animals and produce stacks here.</div>';
   }
   const fullLine=total>=cap?('<div class="barn-storage-full">Storage full — collect to make room.</div>'):'';
+  const collectBtn=renderBarnStorageCollectButton(cfg);
   return '<div class="barn-panel-dark barn-storage-panel">'
     +'<div class="store-items-title">BARN STORAGE · '+total+'/'+cap+'</div>'
     +'<div class="barn-produce-chips">'+chips+'</div>'
     +fullLine
     +(xpTotal?('<div class="barn-produce-xp">+'+xpTotal+' Husbandry on collect</div>'):'')
+    +(collectBtn?('<div class="wb-use-box barn-storage-actions"><div class="wb-use-btns">'+collectBtn+'</div></div>'):'')
     +'</div>';
 }
 
 function renderBarnAnimalFeedInfo(cfg){
   if(!barnHasAnyAnimal(cfg)) return '';
   ensureBarnAnimalSlots(cfg);
-  const feedLines=[];
-  const feedTotals={};
-  cfg.animalSlots.forEach(slot=>{
-    if(!slot?.type) return;
-    const def=getBarnAnimalDef(slot.type);
-    const food=typeof getBarnAnimalPrimaryFood==='function'?getBarnAnimalPrimaryFood(def):{ key:'wheat', amount:1, label:'wheat' };
-    feedTotals[food.key]=(feedTotals[food.key]|0)+(food.amount|0);
+  ensureBarnTroughStock(cfg);
+  const lines=typeof barnGroupedAnimalTroughLines==='function'
+    ?barnGroupedAnimalTroughLines(cfg, cfg.troughStock)
+    :[];
+  if(!lines.length) return '';
+  return '<div class="barn-animal-feed-info">'
+    +lines.map(l=>'<div class="barn-trough-animal-line">'+l+'</div>').join('')
+    +'</div>';
+}
+
+function barnTroughTitleSuffix(cfg){
+  ensureBarnInterior(cfg);
+  const summary=typeof barnTroughCapacitySummary==='function'
+    ?barnTroughCapacitySummary(cfg.barnInterior)
+    :{ perTypeCap:0 };
+  const cap=summary.perTypeCap|0;
+  if(cap<1) return '';
+  return ' ('+cap+' per type max)';
+}
+
+function barnTroughPreviewFoodKeys(cfg){
+  clampBarnTroughStock(cfg);
+  const levelOrder=typeof BARN_TROUGH_FOOD_LEVEL_ORDER!=='undefined'
+    ?BARN_TROUGH_FOOD_LEVEL_ORDER
+    :(BARN_TROUGH_FOOD_KEYS||[]);
+  if(barnTroughPreviewExpanded) return levelOrder.slice();
+  return levelOrder.filter(k=>(cfg.troughStock[k]|0)>0);
+}
+
+function renderBarnTroughFoodCell(foodKey, stock){
+  const def=typeof barnTroughFoodDef==='function'?barnTroughFoodDef(foodKey):{ icon:'🌾' };
+  const n=Math.max(0,stock|0);
+  return '<div class="barn-trough-food-cell" title="'+foodKey+'">'
+    +'<span class="barn-trough-food-icon">'+def.icon+'</span>'
+    +'<span class="barn-trough-food-count">'+n+'</span>'
+    +'</div>';
+}
+
+function renderBarnTroughSplitTop(cfg){
+  clampBarnTroughStock(cfg);
+  const keys=barnTroughPreviewFoodKeys(cfg);
+  const levelOrder=typeof BARN_TROUGH_FOOD_LEVEL_ORDER!=='undefined'
+    ?BARN_TROUGH_FOOD_LEVEL_ORDER
+    :(BARN_TROUGH_FOOD_KEYS||[]);
+  const canExpand=levelOrder.length>0;
+  const gridCls='barn-trough-food-grid'+(barnTroughPreviewExpanded?' is-expanded':'');
+  let inner='';
+  if(keys.length){
+    inner=keys.map(k=>renderBarnTroughFoodCell(k, cfg.troughStock[k])).join('');
+  }else{
+    inner='<span class="barn-trough-food-empty">Feed animals to track diet here</span>';
+  }
+  const expandBtn=canExpand
+    ?('<span class="barn-trough-expand-btn" role="button" tabindex="0" onclick="event.stopPropagation();toggleBarnTroughPreviewExpand()" aria-label="'+(barnTroughPreviewExpanded?'Collapse':'Expand')+'">'+(barnTroughPreviewExpanded?'▲':'▼')+'</span>')
+    :'';
+  return '<div class="barn-trough-split-top" title="Feed in trough">'
+    +'<div class="'+gridCls+'">'+inner+'</div>'
+    +expandBtn
+    +'</div>';
+}
+
+function barnHasBagFeedRoomForTrough(cfg){
+  if(!barnHasTroughCapacity(cfg)) return false;
+  clampBarnTroughStock(cfg);
+  const summary=typeof barnTroughCapacitySummary==='function'
+    ?barnTroughCapacitySummary(cfg.barnInterior)
+    :{ perTypeCap:0 };
+  const cap=summary.perTypeCap|0;
+  return (BARN_TROUGH_FOOD_KEYS||[]).some(fk=>{
+    const room=Math.max(0, cap-(cfg.troughStock[fk]|0));
+    return room>0&&itemCountBagAndStore(fk)>0;
   });
-  Object.keys(feedTotals).forEach(fk=>{
-    const need=feedTotals[fk];
-    const foodDef=BARN_ANIMAL_FOODS[fk];
-    const label=foodDef?.name?.toLowerCase()||fk;
-    const stock=itemCountBagAndStore(fk);
-    feedLines.push(barnResourceLineHtml('Eats', label, stock, need));
-  });
-  const produceText=typeof barnAggregateProducesText==='function'?barnAggregateProducesText(cfg):'';
-  return '<div class="barn-panel-dark barn-production-panel">'
-    +'<div class="store-items-title">PRODUCTION</div>'
-    +'<div class="barn-animal-feed-info">'
-    +feedLines.join('')
-    +(produceText?('<span class="wb-mat-stock barn-animal-produces-line">Producing: '+produceText+'</span>'):'')
-    +'</div></div>';
+}
+
+function barnTroughPrimaryAction(cfg){
+  if(!cfg) return { mode:'fill', label:'FILL TROUGH', sub:'', disabled:true };
+  processBarnFeedCatchUp(cfg);
+  ensureBarnAnimalSlots(cfg);
+  clampBarnTroughStock(cfg);
+  const hungry=barnHungryAnimalCount(cfg);
+  const storageFull=barnStorageFull(cfg);
+  if(hungry>0&&!storageFull){
+    if(barnHasFeedForHungry(cfg)){
+      return {
+        mode:'feed',
+        label:'FEED ALL',
+        sub:barnFeedAllSubText(cfg),
+        disabled:false,
+      };
+    }
+    return {
+      mode:'feed',
+      label:'FEED ALL',
+      sub:'need feed in trough or bag',
+      disabled:true,
+    };
+  }
+  if(hungry>0&&storageFull){
+    return {
+      mode:'feed',
+      label:'FEED ALL',
+      sub:barnFeedAllSubText(cfg),
+      disabled:true,
+    };
+  }
+  const canFill=barnHasBagFeedRoomForTrough(cfg);
+  return {
+    mode:'fill',
+    label:'FILL TROUGH',
+    sub:barnFillTroughSubText(cfg),
+    disabled:!canFill,
+  };
+}
+
+function barnTroughPrimaryActionClick(){
+  const cfg=getBarnConfig(activeBarnInstanceId);
+  if(!cfg) return;
+  const action=barnTroughPrimaryAction(cfg);
+  if(action.disabled) return;
+  if(action.mode==='feed') feedAllBarnAnimals();
+  else fillBarnTroughFromBag();
+}
+
+function toggleBarnTroughPreviewExpand(){
+  barnTroughPreviewExpanded=!barnTroughPreviewExpanded;
+  const cfg=getBarnConfig(activeBarnInstanceId);
+  const troughEl=document.getElementById('barn-trough-section');
+  if(troughEl&&cfg) troughEl.innerHTML=renderBarnTroughSection(cfg);
+}
+
+function renderBarnTroughMenuTile(){
+  return '<button type="button" class="barn-trough-side-btn barn-trough-tile-manage" onclick="openBarnTroughMenu()" title="Trough stock and settings">'
+    +'<span class="barn-trough-tile-icon">📋</span>'
+    +'<span class="barn-trough-tile-label">Trough</span>'
+    +'</button>';
+}
+
+function renderBarnTroughAutoTile(cfg){
+  ensureBarnTroughStock(cfg);
+  const autoOn=!!cfg.troughAutoFeed;
+  return '<button type="button" class="barn-trough-side-btn barn-trough-tile-auto'+(autoOn?' is-on':'')+'" onclick="toggleBarnTroughAutoFeed()" title="Toggle auto-feed">'
+    +'<span class="barn-trough-tile-icon">'+(autoOn?'✓':'○')+'</span>'
+    +'<span class="barn-trough-tile-label">Auto'+(autoOn?' ON':'')+'</span>'
+    +'</button>';
+}
+
+function renderBarnTroughMainPanel(cfg){
+  const action=barnTroughPrimaryAction(cfg);
+  const inner=renderBarnTroughSplitTop(cfg);
+  return '<div class="barn-trough-main-panel">'
+    +'<div class="barn-trough-preview-shell" onclick="event.stopPropagation();toggleBarnTroughPreviewExpand()">'
+    +inner
+    +'</div>'
+    +'<button type="button" class="barn-trough-main-action barn-action-btn" '
+    +(action.disabled?'disabled':'')+' onclick="barnTroughPrimaryActionClick()">'
+    +'<span class="barn-trough-main-label">'+action.label+'</span>'
+    +'<span class="barn-trough-main-sub">'+action.sub+'</span>'
+    +'</button>'
+    +'</div>';
+}
+
+function renderBarnTroughControls(cfg){
+  if(!barnHasAnyAnimal(cfg)) return '';
+  return '<div class="barn-trough-layout">'
+    +'<div class="barn-trough-sidebar">'
+    +renderBarnTroughMenuTile()
+    +renderBarnTroughAutoTile(cfg)
+    +'</div>'
+    +renderBarnTroughMainPanel(cfg)
+    +'</div>';
+}
+
+function renderBarnTroughSection(cfg){
+  const feedInfo=barnHasAnyAnimal(cfg)?renderBarnAnimalFeedInfo(cfg):'';
+  const controls=renderBarnTroughControls(cfg);
+  const titleSuffix=barnTroughTitleSuffix(cfg);
+  if(!feedInfo&&!controls){
+    return '<div class="store-items-title">TROUGH'+titleSuffix+'</div>'
+      +'<div class="barn-trough-empty">No animals yet — add livestock inside the barn.</div>';
+  }
+  const capNote=barnHasTroughCapacity(cfg)?'':'<p class="barn-trough-cap-note">Place troughs inside the barn to store feed (10 / 20 / 30 per type).</p>';
+  return '<div class="store-items-title">TROUGH'+titleSuffix+'</div>'
+    +capNote
+    +feedInfo
+    +(controls||'');
+}
+
+function renderBarnStorageCollectButton(cfg){
+  const hasStored=barnHasStoredProduce(cfg);
+  const collectSub=barnCollectSubText(cfg);
+  return '<button type="button" class="wb-btn once barn-action-btn" style="flex:1" '
+    +(!hasStored?'disabled':'')+' onclick="collectAllBarnStorage()">'
+    +'COLLECT ALL'
+    +'<span class="wb-btn-sub">'+collectSub+'</span>'
+    +'</button>';
 }
 
 function renderBarnAnimalStatus(cfg){
@@ -2323,10 +2818,10 @@ function renderBarnAnimalStatus(cfg){
   if(!statusEl) return;
   if(!barnHasAnyAnimal(cfg)){
     if(barnHasStoredProduce(cfg)){
-      statusEl.textContent='Collect barn storage, or adopt a new animal.';
+      statusEl.textContent='Collect barn storage, or add an animal inside the barn.';
       statusEl.className='fish-status idle';
     }else{
-      statusEl.textContent='Adopt an animal.';
+      statusEl.textContent='Enter the barn and tap an empty pen to add livestock.';
       statusEl.className='fish-status idle';
     }
     return;
@@ -2337,13 +2832,13 @@ function renderBarnAnimalStatus(cfg){
   const hungry=barnHungryAnimalCount(cfg);
   const stored=barnHasStoredProduce(cfg);
   if(feedingCount>0){
-    statusEl.textContent=feedingCount+' animal'+(feedingCount===1?' is':'s are')+' eating — check slot timers.';
-    statusEl.className='fish-status';
+    statusEl.textContent='';
+    statusEl.className='fish-status idle';
     return;
   }
   if(stored){
     const total=barnStorageTotal(cfg);
-    const cap=barnStorageCap(cfg);
+    const cap=barnEffectiveStorageCap(cfg);
     statusEl.textContent='Barn storage: '+total+'/'+cap+' — collect whenever you like, or feed again.';
     statusEl.className='fish-status idle';
     return;
@@ -2368,12 +2863,29 @@ function renderBarnAnimalStatus(cfg){
 
 function barnHasFeedForHungry(cfg){
   ensureBarnAnimalSlots(cfg);
+  ensureBarnTroughStock(cfg);
   return cfg.animalSlots.some(s=>{
     if(!s?.type||barnIsSlotFeeding(s)) return false;
     const def=getBarnAnimalDef(s.type);
     const food=typeof getBarnAnimalPrimaryFood==='function'?getBarnAnimalPrimaryFood(def):{ key:'wheat', amount:1 };
-    return itemCountBagAndStore(food.key)>=(food.amount|0);
+    return barnFoodAvailableForFeed(cfg, food.key, food.amount);
   });
+}
+
+function barnFillTroughSubText(cfg){
+  ensureBarnTroughStock(cfg);
+  if(!barnHasTroughCapacity(cfg)) return 'place a trough inside';
+  const summary=typeof barnTroughCapacitySummary==='function'
+    ?barnTroughCapacitySummary(cfg.barnInterior)
+    :{ perTypeCap:0 };
+  const cap=summary.perTypeCap|0;
+  let minRoom=cap;
+  (BARN_TROUGH_FOOD_KEYS||[]).forEach(fk=>{
+    const room=Math.max(0, cap-(cfg.troughStock[fk]|0));
+    if(room<minRoom) minRoom=room;
+  });
+  if(minRoom<1) return 'trough full ('+cap+' per type)';
+  return 'room for '+minRoom+' more per type';
 }
 
 function barnFeedAllSubText(cfg){
@@ -2381,9 +2893,9 @@ function barnFeedAllSubText(cfg){
   const feedingCount=cfg.animalSlots.filter(s=>s?.type&&barnIsSlotFeeding(s)).length;
   const cap=barnStorageCap(cfg);
   if(barnStorageFull(cfg)) return 'storage full ('+cap+')';
-  if(hungry<1) return feedingCount>0?'all animals eating':'need feed';
-  if(feedingCount>0) return hungry+' ready · '+feedingCount+' eating';
-  return hungry+' ready · 1 feed each';
+  if(hungry<1) return feedingCount>0?'all animals eating':'none hungry';
+  if(feedingCount>0) return hungry+' hungry · '+feedingCount+' eating';
+  return hungry+' hungry · trough or bag';
 }
 
 function barnCollectSubText(cfg){
@@ -2399,66 +2911,15 @@ function barnCollectSubText(cfg){
   return parts.length?parts.join(', '):'bonus finds';
 }
 
-function renderBarnAnimalActionButtons(cfg){
-  const actionsEl=document.getElementById('barn-animal-actions');
-  if(!actionsEl) return;
-  const hasAnimals=barnHasAnyAnimal(cfg);
-  const hasStored=barnHasStoredProduce(cfg);
-  if(!hasAnimals&&!hasStored){
-    actionsEl.hidden=true;
-    actionsEl.innerHTML='';
-    return;
-  }
-  ensureBarnAnimalSlots(cfg);
-  const hungry=barnHungryAnimalCount(cfg);
-  const canFeedAll=hasAnimals&&hungry>0&&barnHasFeedForHungry(cfg)&&!barnStorageFull(cfg);
-  const feedSub=barnFeedAllSubText(cfg);
-  const collectSub=barnCollectSubText(cfg);
-  let html='<div class="wb-use-box"><div class="wb-use-btns barn-action-btns">';
-  if(hasAnimals){
-    html+='<button type="button" class="wb-btn once barn-action-btn" style="flex:1" '
-      +(!canFeedAll?'disabled':'')+' onclick="feedAllBarnAnimals()">'
-      +'🍽️ FEED ALL'
-      +'<span class="wb-btn-sub">'+feedSub+'</span>'
-      +'</button>';
-  }
-  html+='<button type="button" class="wb-btn once barn-action-btn" style="flex:1" '
-    +(!hasStored?'disabled':'')+' onclick="collectAllBarnStorage()">'
-    +'COLLECT ALL'
-    +'<span class="wb-btn-sub">'+collectSub+'</span>'
-    +'</button>';
-  html+='</div></div>';
-  actionsEl.hidden=false;
-  actionsEl.innerHTML=html;
-}
-
-function renderBarnCollectButtons(cfg, btnEl){
-  renderBarnAnimalActionButtons(cfg);
-}
-
 function barnHasEmptyAnimalSlot(cfg){
   return barnFirstEmptyAnimalSlotIndex(cfg)>=0;
-}
-
-function renderBarnAdoptPanel(cfg){
-  if(!barnHasEmptyAnimalSlot(cfg)) return '';
-  return '<div class="barn-panel-dark barn-adopt-panel">'
-    +'<div class="store-items-title">ADOPT AN ANIMAL</div>'
-    +(getBarnSizeTier(cfg)<BARN_SIZE_TIER.medium?'<p class="barn-adopt-flavor">Bigger animals are going to need a bigger barn.</p>':'')
-    +'<div class="wb-mat-options">'+renderBarnAdoptOptions(cfg)+'</div>'
-    +'</div>';
 }
 
 function renderBarnAnimalPanel(cfg){
   const panelEl=document.getElementById('barn-animal-panel');
   const btnEl=document.getElementById('barn-buttons');
   if(!panelEl) return;
-  renderBarnAnimalActionButtons(cfg);
-  let html='';
-  html+=renderBarnStorage(cfg);
-  if(barnHasAnyAnimal(cfg)) html+=renderBarnAnimalFeedInfo(cfg);
-  html+=renderBarnAdoptPanel(cfg);
-  panelEl.innerHTML=html;
+  panelEl.innerHTML=renderBarnStorage(cfg);
   if(btnEl){ btnEl.hidden=true; btnEl.innerHTML=''; }
 }
 
@@ -2466,25 +2927,19 @@ function renderBarnActivitySection(cfg){
   const buildSection=document.getElementById('barn-build-section');
   const activitySection=document.getElementById('barn-activity-section');
   const upgradeEl=document.getElementById('barn-upgrade-section');
-  const actionsEl=document.getElementById('barn-animal-actions');
+  const troughEl=document.getElementById('barn-trough-section');
   if(buildSection) buildSection.hidden=true;
   if(activitySection) activitySection.hidden=false;
   processBarnFeedCatchUp(cfg);
   renderBarnAnimalSlots(cfg);
+  if(troughEl) troughEl.innerHTML=renderBarnTroughSection(cfg);
   renderBarnAnimalPanel(cfg);
   renderBarnAnimalStatus(cfg);
   if(upgradeEl){
     upgradeEl.innerHTML=renderBarnUpgradeSection(cfg)+renderBarnLargeUpgradeSection(cfg);
   }
   const btnEl=document.getElementById('barn-buttons');
-  if(btnEl&&isLargeBarn(cfg)){
-    btnEl.hidden=false;
-    btnEl.innerHTML=renderBarnEnterActions(cfg);
-  }
-  if(!upgradeEl?.innerHTML&&actionsEl&&!barnHasAnyAnimal(cfg)&&!barnHasStoredProduce(cfg)){
-    actionsEl.hidden=true;
-    actionsEl.innerHTML='';
-  }
+  if(btnEl){ btnEl.hidden=true; btnEl.innerHTML=''; }
   if(barnAnyAnimalFeeding(cfg)) startBarnTimer();
   else stopBarnTimer();
 }
@@ -2533,8 +2988,8 @@ function renderBarnBuildSection(cfg){
   if(buildSection) buildSection.hidden=false;
   if(activitySection) activitySection.hidden=true;
   if(upgradeEl) upgradeEl.innerHTML='';
-  const actionsEl=document.getElementById('barn-animal-actions');
-  if(actionsEl){ actionsEl.hidden=true; actionsEl.innerHTML=''; }
+  const troughEl=document.getElementById('barn-trough-section');
+  if(troughEl) troughEl.innerHTML='';
   if(countEl){
     countEl.hidden=false;
     countEl.textContent=progress+' / '+total+' materials placed';

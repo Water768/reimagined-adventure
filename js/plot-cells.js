@@ -214,13 +214,54 @@ function buildCavePlotAddItem(id, def, x, y){
     +'</span></button>';
 }
 
-function buildGatheringPlotAddItem(id, def, x, y){
-  const drops=formatGatheringDrops(def.gatherKey);
-  return '<button type="button" class="plot-add-item" onclick="placePlotTile('+x+','+y+',\''+id+'\')">'
+function buildExpeditionPlotAddItem(id, def, x, y){
+  const featureUnlocked=typeof isPlotFeatureUnlockedByTile==='function'?isPlotFeatureUnlockedByTile(id):true;
+  const drops=def.desc||'Launch treks from this location.';
+  const cls='plot-add-item'+(!featureUnlocked?' structure-locked below-rec is-disabled':'');
+  return '<button type="button" class="'+cls+'"'+(featureUnlocked?'':' disabled')+(featureUnlocked?(' onclick="placePlotTile('+x+','+y+',\''+id+'\')"'):'')+'>'
     +'<span class="plot-add-item-icon">'+def.icon+'</span>'
     +'<span class="plot-add-item-name">'
     +plotAddItemTitleRow(def.name, '')
     +'<span class="plot-add-item-drops">'+drops+'</span>'
+    +'</span></button>';
+}
+
+function buildGatheringPlotAddItem(id, def, x, y){
+  const loc=typeof getGatheringByKey==='function'?getGatheringByKey(def.gatherKey):null;
+  const foragingLvl=Number(state.skills.foraging?.level)||1;
+  const unlockOk=loc&&typeof meetsGatheringUnlockRequirements==='function'
+    ?meetsGatheringUnlockRequirements(loc)
+    :true;
+  const harvestOk=loc&&typeof canHarvestAtGatheringLocation==='function'
+    ?canHarvestAtGatheringLocation(loc)
+    :true;
+  const locked=!unlockOk;
+  const belowRec=unlockOk&&!harvestOk;
+  let cls='plot-add-item';
+  if(locked) cls+=' locked below-rec';
+  else if(belowRec) cls+=' below-rec';
+  const drops=formatGatheringDrops(def.gatherKey);
+  const unlockMsg=loc&&typeof getGatheringUnlockBlockMessage==='function'
+    ?getGatheringUnlockBlockMessage(loc)
+    :'';
+  const sub=locked&&unlockMsg?unlockMsg:drops;
+  const primaryReq=loc?.unlockRequirements?.[0];
+  const lvlBadge=primaryReq
+    ?plotAddLevelBadge(primaryReq.skill, Number(state.skills[primaryReq.skill]?.level)||1, primaryReq.level, primaryReq.level)
+    :plotAddLevelBadge('foraging', foragingLvl, loc?getGatheringHarvestLevel(loc):1, loc?getGatheringHarvestLevel(loc):1);
+  if(locked){
+    return '<button type="button" class="'+cls+'" disabled>'
+      +'<span class="plot-add-item-icon">🔒</span>'
+      +'<span class="plot-add-item-name">'
+      +plotAddItemTitleRow(def.name, lvlBadge)
+      +'<span class="plot-add-item-drops">'+sub+'</span>'
+      +'</span></button>';
+  }
+  return '<button type="button" class="'+cls+'" onclick="placePlotTile('+x+','+y+',\''+id+'\')">'
+    +'<span class="plot-add-item-icon">'+def.icon+'</span>'
+    +'<span class="plot-add-item-name">'
+    +plotAddItemTitleRow(def.name, lvlBadge)
+    +'<span class="plot-add-item-drops">'+sub+'</span>'
     +'</span></button>';
 }
 
@@ -229,7 +270,13 @@ function getPlotTileAccessRequirement(typeId){
   if(!def) return null;
   if(def.behavior==='tree') return { skill:'woodcut', level:def.unlockLevel||1 };
   if(def.behavior==='quarry') return { skill:'mining', level:def.unlockLevel||1 };
-  if(def.behavior==='gather') return { skill:'foraging', level:1 };
+  if(def.behavior==='gather'){
+    const loc=typeof getGatheringByKey==='function'?getGatheringByKey(def.gatherKey):null;
+    if(loc&&typeof plotGatherUnlockMaxLevel==='function'){
+      return { skill:'foraging', level:plotGatherUnlockMaxLevel(loc) };
+    }
+    return { skill:'foraging', level:loc?.harvestLevel||1 };
+  }
   if(def.behavior==='cave') return { skill:'exploration', level:1 };
   if(def.archUnlockLevel) return { skill:'architecture', level:def.archUnlockLevel };
   if(def.unlockLevel) return { skill:'woodcut', level:def.unlockLevel };
@@ -315,7 +362,9 @@ function getPlotTileProspectItems(typeId){
   }
   if(def.behavior==='cave'){
     add('🎒', 'Expedition loot');
-    add('🔦', 'Torches & supplies');
+    if(def.expeditionKey==='whispering_woods') add('⛺', 'Needs adjacent camp');
+    if(def.expeditionKey==='sunken_shallows') add('⚓', 'Needs adjacent docks');
+    else add('🔦', 'Torches & supplies');
     return out;
   }
   return out;
@@ -351,7 +400,8 @@ function rollGatherLoot(gatherKey){
 
 function calcGatherSuccess(){
   const lvl=Number(state.skills.foraging?.level)||1;
-  return Math.min(1, GATHER_BASE_SUCCESS + Math.max(0,lvl-1)*GATHER_SUCCESS_PER_LEVEL);
+  const cap=typeof GATHER_MAX_SUCCESS==='number'?GATHER_MAX_SUCCESS:1;
+  return Math.min(cap, GATHER_BASE_SUCCESS + Math.max(0,lvl-1)*GATHER_SUCCESS_PER_LEVEL);
 }
 
 function tryLocationShardDrop(shardTypes){
@@ -384,6 +434,8 @@ function buildGatherSparklesHtml(gatherKey){
     wet_clearing:'sparkles-wet',
     woodland_clearing:'sparkles-woodland',
     rocky_clearing:'sparkles-rocky',
+    fairy_grove:'sparkles-fae',
+    sunken_rock_pools:'sparkles-pools',
   }[gatherKey]||'sparkles-woodland';
   return buildActivitySparklesHtml('gather-sparkles', 'gather-sparkle', variant);
 }
@@ -471,15 +523,24 @@ function buildFirePitCellHtml(slot, def, editMode){
 
 function buildBarnCellHtml(slot, def, editMode){
   const cfg=typeof getBarnConfig==='function'?getBarnConfig(slot.instanceId):null;
-  if(cfg?.size==='medium'||cfg?.size==='large') return '';
   const vis=getBarnVisualState(cfg, slot.typeId);
+  const complete=vis.stage==='complete';
+  const menuZone=!editMode
+    ?(complete
+      ?('<div class="barn-surface-zones">'
+        +'<button type="button" class="barn-enter-zone" onclick="event.stopPropagation();barnEnterTap(event)">enter barn</button>'
+        +'<div class="plot-activity-menu-zone barn-menu-zone">'
+        +'<button type="button" class="plot-menu-btn barn-menu-btn" onclick="event.stopPropagation();barnMenuTap(event)">menu</button>'
+        +'</div></div>')
+      :('<div class="plot-activity-menu-zone barn-menu-zone">'
+        +'<button type="button" class="plot-menu-btn barn-menu-btn" onclick="barnMenuTap(event)">menu</button>'
+        +'</div>'))
+    :'';
   return '<div class="plot-activity-top barn-activity-top barn-'+vis.stage+'">'
     +'<div class="barn-sprite">'
     +'<span class="barn-icon">'+vis.icon+'</span>'
     +'<span class="barn-label">'+vis.label+'</span></div></div>'
-    +'<div class="plot-activity-menu-zone barn-menu-zone">'
-    +'<button type="button" class="plot-menu-btn barn-menu-btn" onclick="barnMenuTap(event)">menu</button>'
-    +'</div>'
+    +menuZone
     +(editMode?'<div class="plot-edit-hint">remove</div>':'');
 }
 
@@ -505,8 +566,9 @@ function buildBarnBodySurfaceHtml(cfg, editMode, instanceId){
       +' onclick="event.stopPropagation();confirmRemoveMediumBarn(\''+instanceId+'\')">remove</button>'
       +'</div>')
     :'';
+  const complete=vis.stage==='complete';
   const menuZone=!editMode
-    ?(large
+    ?(complete
       ?('<div class="barn-surface-zones">'
         +'<button type="button" class="barn-enter-zone" onclick="event.stopPropagation();barnEnterTap(event)">enter barn</button>'
         +'<div class="plot-activity-menu-zone barn-menu-zone">'
@@ -521,25 +583,10 @@ function buildBarnBodySurfaceHtml(cfg, editMode, instanceId){
 
 function isBarnDragCell(cell){
   if(!cell?.dataset?.instanceId) return false;
-  if(!cell.classList.contains('cell-barn')&&!cell.classList.contains('cell-barn-base')) return false;
-  const cfg=typeof getBarnConfig==='function'?getBarnConfig(cell.dataset.instanceId):null;
-  if(cfg?.size==='medium'||cfg?.size==='large'){
-    return typeof isMultiTileBarnInstance==='function'&&isMultiTileBarnInstance(cell.dataset.instanceId);
-  }
-  return true;
+  return cell.classList.contains('cell-barn');
 }
 
-/** Medium barn spans two cells — always drag from the anchor tile. */
 function getBarnDragAnchorCell(cell){
-  if(!cell?.dataset?.instanceId) return cell;
-  const cfg=typeof getBarnConfig==='function'?getBarnConfig(cell.dataset.instanceId):null;
-  if(cfg?.size!=='medium'&&cfg?.size!=='large') return cell;
-  const {x,y}=plotCoordsFromCell(cell);
-  if(typeof isBarnAnchorCell==='function'&&isBarnAnchorCell(x,y,cell.dataset.instanceId)) return cell;
-  const anchor=typeof getBarnAnchor==='function'?getBarnAnchor(cell.dataset.instanceId):null;
-  if(anchor&&typeof getPlotCellElement==='function'){
-    return getPlotCellElement(anchor.x,anchor.y)||cell;
-  }
   return cell;
 }
 

@@ -69,7 +69,10 @@ function renderGathering(){
   if(nameEl) nameEl.textContent=loc?.name||'Gathering spot';
   if(subEl){
     if(loc){
-      subEl.textContent=pct+'% find chance • '+GATHER_ITEMS_PER_SESSION+' finds per visit • Foraging Lv '+(state.skills.foraging?.level||1);
+      const harvestNote=typeof getGatheringHarvestBlockMessage==='function'?getGatheringHarvestBlockMessage(loc):'';
+      subEl.textContent=harvestNote
+        ?harvestNote
+        :pct+'% find chance • '+GATHER_ITEMS_PER_SESSION+' finds per visit • Foraging Lv '+(state.skills.foraging?.level||1);
     }else{
       subEl.textContent='Tap a gathering tile on your plot';
     }
@@ -77,8 +80,7 @@ function renderGathering(){
   if(iconEl) iconEl.textContent=loc?.icon||'🌿';
   renderGatherLootList(loc?.key);
   if(xpEl){
-    xpEl.innerHTML='<span class="wb-xp-line">Find: +'+GATHER_XP_SUCCESS+' Foraging • Miss: +'+GATHER_XP_MISS+' Foraging</span>'
-      +'<span class="wb-xp-line">'+pct+'% success at Foraging Lv '+(state.skills.foraging?.level||1)+'</span>';
+    xpEl.innerHTML='<span class="wb-xp-line">Find: +'+GATHER_XP_SUCCESS+' Foraging XP</span>';
   }
   const status=document.getElementById('gather-status');
   if(status){
@@ -88,7 +90,7 @@ function renderGathering(){
     }else if(invFull){
       status.textContent='Bag full ('+invTotal()+'/'+getInvCap()+') — make room before foraging';
     }else{
-      status.textContent='Ready to gather';
+      status.textContent='';
     }
     status.classList.toggle('idle',!gather.running&&!invFull);
   }
@@ -96,16 +98,22 @@ function renderGathering(){
   if(!btnEl) return;
   if(gather.running){
     btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns"><button class="wb-btn stop" onclick="stopGathering()">⛔ STOP GATHERING</button></div></div>';
+    if(typeof renderGatherFawnPanel==='function') renderGatherFawnPanel();
     return;
   }
   const full=invTotal()>=getInvCap();
   const spotReady=!!loc;
+  const harvestBlock=loc&&typeof checkGatherAfternoonHarvestAllowed==='function'
+    ?checkGatherAfternoonHarvestAllowed(loc):{ok:true};
+  const canStart=spotReady&&!full&&harvestBlock.ok;
   btnEl.innerHTML='<div class="wb-use-box"><div class="wb-use-btns">'
-    +'<button class="wb-btn once" '+(full||!spotReady?'disabled':'')+' onclick="startGathering()">'
+    +'<button class="wb-btn once" '+(canStart?'':'disabled')+' onclick="startGathering()">'
     +'🌿 START GATHERING<span class="wb-btn-sub">'+(spotReady?('search for loot ('+GATHER_ITEMS_PER_SESSION+' per visit)'):'pick a gathering spot first')+'</span></button>'
     +'</div>'
-    +(spotReady&&!gather.running&&gather.itemsThisSession>0?'<div class="wb-cost-notice">Tap the spot again after a visit to search for more.</div>':'')
+    +(spotReady&&!harvestBlock.ok?'<div class="wb-cost-notice">'+harvestBlock.message+'</div>':'')
+    +(spotReady&&harvestBlock.ok&&!gather.running&&gather.itemsThisSession>0?'<div class="wb-cost-notice">Tap the spot again after a visit to search for more.</div>':'')
     +'</div>';
+  if(typeof renderGatherFawnPanel==='function') renderGatherFawnPanel();
 }
 
 function switchGatheringSpot(instanceId){
@@ -140,6 +148,14 @@ function startGathering(instanceId){
     });
   }
   if(!gather.instanceId){ showToast('Build a gathering spot first.'); return; }
+  const startLoc=getCurrentGatheringLocation();
+  if(startLoc&&typeof checkGatherAfternoonHarvestAllowed==='function'){
+    const allowed=checkGatherAfternoonHarvestAllowed(startLoc);
+    if(!allowed.ok){
+      showToast(allowed.message||'Cannot forage here yet.');
+      return;
+    }
+  }
   gather.itemsThisSession=0;
   setActivity('gathering');
   gather.running=true;
@@ -181,6 +197,23 @@ function gatherAttempt(){
   if(success){
     const loot=rollGatherLoot(loc.key);
     if(!loot) return;
+    const drop=typeof resolveGatherAfternoonDrop==='function'
+      ?resolveGatherAfternoonDrop(loc, loot)
+      :{keep:true};
+    if(!drop.keep){
+      gather.itemsThisSession++;
+      grantXP('foraging',GATHER_XP_SUCCESS,null);
+      tryLocationShardDrop(loc.shardTypes);
+      const msg=drop.message||('Almost had '+loot.name.toLowerCase()+'…');
+      addActivityLog('gather-log',msg+' +'+GATHER_XP_SUCCESS+' Foraging XP',drop.logKind||'fail');
+      if(drop.message) showToast(drop.message);
+      if(currentScreen==='gathering-screen'){
+        renderGathering();
+        if(typeof renderGatherFawnPanel==='function') renderGatherFawnPanel();
+      }
+      flushActivityUi('screen');
+      return;
+    }
     const added=invAdd(loot.key,loot.icon,loot.name,1);
     if(!added){
       stopGathering();
@@ -191,7 +224,10 @@ function gatherAttempt(){
     gather.itemsThisSession++;
     grantXP('foraging',GATHER_XP_SUCCESS,null);
     tryLocationShardDrop(loc.shardTypes);
-    addActivityLog('gather-log',loot.icon+' Found '+loot.name.toLowerCase()+'! +'+GATHER_XP_SUCCESS+' Foraging','success');
+    addActivityLog('gather-log',loot.icon+' Found '+loot.name.toLowerCase()+'! +'+GATHER_XP_SUCCESS+' Foraging XP','success');
+    if(loot.key==='mushrooms'&&typeof applyFawnComfortOnMushroomHarvest==='function'){
+      applyFawnComfortOnMushroomHarvest(loc);
+    }
     if(gather.itemsThisSession>=GATHER_ITEMS_PER_SESSION){
       stopGathering();
       showToast('Visit complete — '+GATHER_ITEMS_PER_SESSION+' finds! Tap the spot to search again.');
@@ -199,10 +235,10 @@ function gatherAttempt(){
   }else{
     grantXP('foraging',GATHER_XP_MISS,null);
     const missMsgs=[
-      'You poke around. Nothing yet. +'+GATHER_XP_MISS+' Foraging',
-      'Rustle in the undergrowth — gone. +'+GATHER_XP_MISS+' Foraging',
-      'Almost had something… +'+GATHER_XP_MISS+' Foraging',
-      'Wrong patch. Keep looking. +'+GATHER_XP_MISS+' Foraging',
+      'You poke around. Nothing yet. +'+GATHER_XP_MISS+' Foraging XP',
+      'Rustle in the undergrowth — gone. +'+GATHER_XP_MISS+' Foraging XP',
+      'Almost had something… +'+GATHER_XP_MISS+' Foraging XP',
+      'Wrong patch. Keep looking. +'+GATHER_XP_MISS+' Foraging XP',
     ];
     addActivityLog('gather-log',missMsgs[Math.floor(Math.random()*missMsgs.length)],'fail');
   }

@@ -5,7 +5,7 @@
    PERSISTENCE (localStorage)
 ═══════════════════════════════════════ */
 const SAVE_KEY='hearthstead-save';
-const SAVE_VERSION=6;
+const SAVE_VERSION=7;
 /** Debounced autosave delay (ms) — inventory ticks no longer trigger this via syncUI. */
 const SAVE_DEBOUNCE_MS=2500;
 let saveGameTimer=null;
@@ -57,10 +57,15 @@ function runPreSerializeMigrations(){
   migratePlot();
   migrateInterior();
   if(typeof migrateApothecaryTable==='function') migrateApothecaryTable();
+  if(typeof migrateStudyDesk==='function') migrateStudyDesk();
+  if(typeof migrateBookcase==='function') migrateBookcase();
 }
 
 function runAllSaveMigrations(){
   try{
+    migrateKnowledgeToAcademia();
+    if(typeof migrateStudyDesk==='function') migrateStudyDesk();
+    if(typeof ensurePocketsState==='function') ensurePocketsState();
     fillMissingSkillKeys();
     if(typeof migrateAllPlotStructures==='function') migrateAllPlotStructures();
     migrateItemKeys();
@@ -72,6 +77,8 @@ function runAllSaveMigrations(){
     migratePlot();
     migrateInterior();
     if(typeof migrateApothecaryTable==='function') migrateApothecaryTable();
+    if(typeof migrateStudyDesk==='function') migrateStudyDesk();
+    if(typeof migrateBookcase==='function') migrateBookcase();
     migrateStoreRoomSlot();
     migrateStoreRooms();
     reclaimMissingStoreRoomCells();
@@ -79,6 +86,8 @@ function runAllSaveMigrations(){
     migrateShelfTiers();
     if(typeof migrateApothecaryProcessKey==='function') migrateApothecaryProcessKey();
     if(typeof migrateCleanBandageKey==='function') migrateCleanBandageKey();
+    if(typeof migrateFawnComfortState==='function') migrateFawnComfortState();
+    if(typeof migrateCraftingDesk==='function') migrateCraftingDesk();
   }catch(err){
     console.error('[Hearthstead] Save migration failed:', err);
   }
@@ -97,6 +106,7 @@ function runPostLoadMigrations(){
   if(typeof migrateLoomRecipeKey==='function') migrateLoomRecipeKey();
   if(typeof migrateLeanInventory==='function') migrateLeanInventory();
   if(typeof trimStorageToCapacity==='function') trimStorageToCapacity();
+  if(typeof migrateFeatherPocket==='function') migrateFeatherPocket();
 }
 
 function applySavedState(saved){
@@ -235,7 +245,69 @@ function saveGameNow(){
 
 const DEV_PLAYTEST_SKILL_LEVEL=30;
 const DEV_PLAYTEST_ITEM_COUNT=300;
-const DEV_PLAYTEST_SKIP_ITEM_CATEGORIES=new Set(['junk','furniture','unknown']);
+const DEV_PLAYTEST_SKIP_ITEM_CATEGORIES=new Set(['junk','unknown']);
+
+function devEquipAllToolStoreTools(){
+  if(typeof ensureToolStoreTools!=='function') return 0;
+  ensureToolStoreTools();
+  state.equipped=null;
+  if(typeof AXE_DEFS!=='undefined') state.toolStoreTools.axes=AXE_DEFS.map(d=>d.key);
+  if(typeof PICKAXE_DEFS!=='undefined') state.toolStoreTools.pickaxes=PICKAXE_DEFS.map(d=>d.key);
+  if(typeof FISHING_ROD_DEFS!=='undefined') state.toolStoreTools.rods=FISHING_ROD_DEFS.map(d=>d.key);
+  if(typeof FISHING_NET_DEFS!=='undefined') state.toolStoreTools.nets=FISHING_NET_DEFS.map(d=>d.key);
+  state.toolStoreTools.basket='basket';
+  state.toolStoreTools.activeAxe=getUsableToolStoreAxeDef()?.key||getBestOwnedAxeDef()?.key||null;
+  state.toolStoreTools.activePickaxe=getUsableToolStorePickaxeDef()?.key||getBestOwnedPickaxeDef()?.key||null;
+  state.toolStoreTools.activeRod=getUsableToolStoreRodDef()?.key||getBestOwnedRodDef()?.key||null;
+  state.toolStoreTools.activeNet=getUsableToolStoreNetDef()?.key||getBestOwnedNetDef()?.key||null;
+  state.axeFound=!!getOwnedToolStoreAxeKeys().length;
+  const toolKeys=new Set([
+    ...(state.toolStoreTools.axes||[]),
+    ...(state.toolStoreTools.pickaxes||[]),
+    ...(state.toolStoreTools.rods||[]),
+    ...(state.toolStoreTools.nets||[]),
+    state.toolStoreTools.basket,
+  ].filter(Boolean));
+  toolKeys.forEach(key=>{
+    const def=getItemDef(key);
+    if(def&&typeof registerLegacyItemMeta==='function') registerLegacyItemMeta(key, def.icon, def.name);
+  });
+  return toolKeys.size;
+}
+
+function devGrantPlaytestItems(storageCount){
+  const n=Math.max(0, storageCount|0);
+  if(!n||typeof ITEM_REGISTRY==='undefined') return { storageTypes:0, bagTypes:0, toolTypes:0 };
+  state.inventory={};
+  state.storage={};
+  state.equippedBag=null;
+  const toolTypes=devEquipAllToolStoreTools();
+  let storageTypes=0;
+  let bagTypes=0;
+  Object.keys(ITEM_REGISTRY).forEach((key)=>{
+    const def=ITEM_REGISTRY[key];
+    if(!def||DEV_PLAYTEST_SKIP_ITEM_CATEGORIES.has(def.category)) return;
+    if(typeof isToolStoreToolKey==='function'&&isToolStoreToolKey(key)) return;
+    if(typeof isFeatherPocketKey==='function'&&isFeatherPocketKey(key)){
+      stackSet(state.inventory, key, 1, { silent:true });
+      bagTypes++;
+      return;
+    }
+    if(def.stackable===false){
+      stackSet(state.inventory, key, 1, { silent:true });
+      bagTypes++;
+      return;
+    }
+    stackSet(state.storage, key, n, { silent:true });
+    storageTypes++;
+  });
+  if(typeof findBagInBag==='function'&&typeof equipBagDef==='function'){
+    const bag=findBagInBag();
+    if(bag) equipBagDef(bag);
+  }
+  if(typeof markDirty==='function') markDirty('inventory','equip');
+  return { storageTypes, bagTypes, toolTypes };
+}
 
 function devSetAllSkillsToLevel(level){
   if(typeof fillMissingSkillKeys==='function') fillMissingSkillKeys();
@@ -249,25 +321,6 @@ function devSetAllSkillsToLevel(level){
   });
 }
 
-function devGrantUsefulItems(count){
-  const n=Math.max(0, count|0);
-  if(!n||typeof ITEM_REGISTRY==='undefined') return 0;
-  let granted=0;
-  Object.keys(ITEM_REGISTRY).forEach((key)=>{
-    const def=ITEM_REGISTRY[key];
-    if(!def||DEV_PLAYTEST_SKIP_ITEM_CATEGORIES.has(def.category)) return;
-    if(def.stackable===false){
-      stackSet(state.inventory, key, 1, { silent:true });
-      granted++;
-      return;
-    }
-    stackSet(state.storage, key, n, { silent:true });
-    granted++;
-  });
-  if(typeof markDirty==='function') markDirty('inventory');
-  return granted;
-}
-
 function devPlaytestReset(){
   if(!saveLoadFinished){
     showToast('Still loading — try again in a moment.');
@@ -277,17 +330,25 @@ function devPlaytestReset(){
     showToast('Start playing first, then use Reset.');
     return;
   }
-  if(!confirm('Set all skills to level '+DEV_PLAYTEST_SKILL_LEVEL+' and grant '+DEV_PLAYTEST_ITEM_COUNT+' of each useful item? Your save is kept — use Save after.')){
-    return;
-  }
+  const msg=[
+    'Playtest reset — your save is kept (Save after if you want it on disk).',
+    '',
+    '• All skills → Lv '+DEV_PLAYTEST_SKILL_LEVEL+' (Architecture may rise to fit every hut room)',
+    '• Tool store → every axe, pickaxe, rod, net, and basket equipped',
+    '• Storage → '+DEV_PLAYTEST_ITEM_COUNT+'× each stackable item',
+    '• Bag → 1× each non-stackable item (bags auto-equipped; all feather pockets)',
+    '• Hut fully built with every utility, craftable station, and home-made furniture',
+  ].join('\n');
+  if(!confirm(msg)) return;
   devSetAllSkillsToLevel(DEV_PLAYTEST_SKILL_LEVEL);
-  const itemTypes=devGrantUsefulItems(DEV_PLAYTEST_ITEM_COUNT);
+  const items=devGrantPlaytestItems(DEV_PLAYTEST_ITEM_COUNT);
+  if(typeof devSetupPlaytestInterior==='function') devSetupPlaytestInterior();
   if(typeof migratePlot==='function') migratePlot();
-  if(typeof markDirty==='function') markDirty('skills','inventory','activity');
+  if(typeof markDirty==='function') markDirty('skills','inventory','activity','interior','equip');
   if(typeof flushDirty==='function') flushDirty();
   else if(typeof syncUI==='function') syncUI('full');
   requestSaveGame({ immediate:true });
-  showQuickToast('Playtest reset — Lv '+DEV_PLAYTEST_SKILL_LEVEL+', '+itemTypes+' item types stocked.');
+  showQuickToast('Playtest reset — Lv '+DEV_PLAYTEST_SKILL_LEVEL+', '+items.toolTypes+' tools equipped, '+items.storageTypes+' storage types, '+items.bagTypes+' bag items.');
 }
 
 function updateSaveButtonUI(){

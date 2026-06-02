@@ -40,8 +40,8 @@ function chopTree(event, instanceId){
   cfg.woodlandId=woodlandId;
   const chops=cfg.treeChops;
   const chopXp=woodcutXpForLog(logKey);
-  grantXP('woodcut',chopXp,null);
   if(!success){
+    grantXP('woodcut',chopXp,null);
     const missMsgs=[
       'The axe glances off. +'+chopXp+' Woodcutting',
       'Not this swing. +'+chopXp+' Woodcutting',
@@ -57,9 +57,14 @@ function chopTree(event, instanceId){
     flushActivityUi('screen');
     return;
   }
-  if(!invAdd(logKey,logDef.icon,logDef.name,1)){
-    addActivityLog('wc-log','Bag full — could not keep the log.','fail');
-    showToast(INV_FULL_MSGS[invFullIdx++%INV_FULL_MSGS.length]);
+  const harvest=typeof processSuccessfulWoodcutHarvest==='function'
+    ?processSuccessfulWoodcutHarvest({ logKey, logDef, chopXp, axeDef })
+    :null;
+  if(!harvest||harvest.bagFull){
+    if(!harvest||harvest.bagFull){
+      addActivityLog('wc-log','Bag full — could not keep the log.','fail');
+      showToast(INV_FULL_MSGS[invFullIdx++%INV_FULL_MSGS.length]);
+    }
     if(currentScreen==='woodcutting-screen') renderWoodcutting();
     if(instanceId){
       const cell=document.querySelector('.plot-cell.cell-tree[data-instance-id="'+instanceId+'"]');
@@ -68,23 +73,18 @@ function chopTree(event, instanceId){
     flushActivityUi('screen');
     return;
   }
-  addActivityLog('wc-log',logDef.icon+' Chopped '+logDef.name.toLowerCase()+'! +'+chopXp+' Woodcutting','success');
-  if(axeDef&&Math.random()<(getToolStoreBonusAxeDef()?axeDuplicateLogChance(getToolStoreBonusAxeDef().tier):0)){
-    if(invAdd(logKey,logDef.icon,logDef.name,1)){
-      addActivityLog('wc-log',logDef.icon+' Bonus log — your axe split the timber!','success');
-      showToast('🪓 Bonus '+logDef.name.toLowerCase()+' from a clean split!');
+  if(!harvest.incinerated){
+    if(logKey==='singing_oak'){
+      showToast('The tree hums as it falls. Singing Oak. 🎶');
+    }else if(chops===1&&logKey!=='logs'){
+      showToast(logDef.icon+' '+logDef.name+'! '+logDef.vibe);
+    }else if(chops===5){
+      showToast("5 chops! You're getting somewhere. 🪵");
+    }else if(chops===20){
+      showToast("You could build something with all these... 🏗️");
+    }else if(chops>20&&chops%15===0){
+      showToast("The trees keep growing. They'll never run out. 🌳");
     }
-  }
-  if(logKey==='singing_oak'){
-    showToast('The tree hums as it falls. Singing Oak. 🎶');
-  }else if(chops===1&&logKey!=='logs'){
-    showToast(logDef.icon+' '+logDef.name+'! '+logDef.vibe);
-  }else if(chops===5){
-    showToast("5 chops! You're getting somewhere. 🪵");
-  }else if(chops===20){
-    showToast("You could build something with all these... 🏗️");
-  }else if(chops>20&&chops%15===0){
-    showToast("The trees keep growing. They'll never run out. 🌳");
   }
   if(currentScreen==='woodcutting-screen') renderWoodcutting();
   if(instanceId) revealPlotActivityMenu('wc:'+instanceId, document.querySelector('.plot-cell.cell-tree[data-instance-id="'+instanceId+'"]'));
@@ -112,22 +112,6 @@ function openWardrobe(){
     document.querySelectorAll('.int-cell[data-int-key="wardrobe"] .int-label').forEach(el=>el.textContent='wardrobe');
     syncUI(); showToast("🪓 Rusted Axe added to bag — tap it in inventory and EQUIP to bind it to your tool store.");
   });
-}
-
-let pictureWonky=true,pictureCooldown=false;
-function interactPicture(cell){
-  if(pictureCooldown)return; pictureCooldown=true;
-  const frame=cell?.querySelector?.('.int-item');
-  if(!frame){ pictureCooldown=false; return; }
-  if(pictureWonky){
-    frame.style.transform='rotate(0deg)'; pictureWonky=false;
-    grantXP('design',5,pseudoClickEventFromEl(cell));
-    showToast("You straighten the picture. It looks better. ✨");
-    setTimeout(()=>{
-      frame.style.transition='none'; frame.style.transform='rotate(-8deg)'; pictureWonky=true;
-      setTimeout(()=>{frame.style.transition='transform 0.5s';},50); pictureCooldown=false;
-    },3000);
-  }else{showToast("Already straight. For now."); pictureCooldown=false;}
 }
 
 let dogBedCD=false;
@@ -1053,10 +1037,7 @@ function renderCookQuickTapToggle(containerId, quickAction, toggleHandler, varia
 
 function renderCookXpPreview(el, recipe){
   if(!el||!recipe) return;
-  const pct=Math.round(calcCookSuccess(recipe)*100);
-  const cookLvl=Number(state.skills.cooking?.level)||1;
-  el.innerHTML='<span class="wb-xp-line">Success: +'+recipe.xpSuccess+' Cooking • Burn: +'+recipe.xpBurn+' Cooking</span>'
-    +'<span class="wb-xp-line">'+pct+'% success at Cooking Lv '+cookLvl+'</span>';
+  el.innerHTML='<span class="wb-xp-line">'+formatSkillXp(recipe.xpSuccess, 'Cooking')+'</span>';
 }
 
 function renderCookRecipePickerList(el, pickerOpen, toggleHandler, selectHandler){
@@ -1132,7 +1113,7 @@ function renderFireplace(){
   renderCookXpPreview(document.getElementById('fp-xp-preview'), recipe);
   const status=document.getElementById('fp-status');
   if(status){
-    status.textContent=cook.running?'Cooking…':'Cook raw fish over the hearth';
+    status.textContent=cook.running?'Cooking…':'';
     status.classList.toggle('idle',!cook.running);
   }
   const btnEl=document.getElementById('fp-buttons');
@@ -1400,7 +1381,7 @@ function renderSpinningWheel(){
     const need=spinRecipeInputQty(recipe);
     const locked=!isSpinRecipeUnlocked(recipe);
     xpEl.innerHTML='<span class="wb-xp-line">Uses '+need+'× '+recipe.rawName+' per attempt</span>'
-      +'<span class="wb-xp-line">Success: +'+recipe.xpSuccess+' Crafting • Fail: +'+recipe.xpFail+' Crafting</span>'
+      +'<span class="wb-xp-line">'+formatSkillXp(recipe.xpSuccess, 'Crafting')+' on success • '+formatSkillXp(recipe.xpFail, 'Crafting')+' on fail</span>'
       +(locked
         ?'<span class="wb-xp-line">🔒 Need Crafting Lv '+recipe.requiredCraftingLevel+'</span>'
         :'<span class="wb-xp-line">'+pct+'% success at Crafting Lvl '+(state.skills.crafting?.level||1)+'</span>'
@@ -1410,7 +1391,7 @@ function renderSpinningWheel(){
   }
   const status=document.getElementById('sw-status');
   if(status){
-    status.textContent=spin.running?'Spinning…':'Ready to spin';
+    status.textContent=spin.running?'Spinning…':'';
     status.classList.toggle('idle',!spin.running);
   }
   const btnEl=document.getElementById('sw-buttons');
@@ -1700,7 +1681,11 @@ function storageCapPerType(){
 
 function depositAllToStorage(){
   if(!hasAnyStoreRoom()) return 0;
-  let moved = 0;
+  let moved=0;
+  if(typeof depositFeatherPocketToStorage==='function'){
+    const fromPocket=depositFeatherPocketToStorage();
+    if(fromPocket>0) moved+=fromPocket;
+  }
   Object.keys(state.inventory).forEach(key=>{
     if(typeof isToolStoreToolKey==='function'&&isToolStoreToolKey(key)) return;
     const inBag=stackCount(state.inventory, key);
@@ -1732,7 +1717,7 @@ function closeInteriorBuildMenu(){
 }
 
 function buildInteriorHomemadeUtilityFurnitureMenuItems(x,y){
-  return buildApothecaryUtilityMenuItem(x,y)+buildWonkyLoomUtilityMenuItem(x,y);
+  return buildApothecaryUtilityMenuItem(x,y)+buildWonkyLoomUtilityMenuItem(x,y)+buildStudyDeskUtilityMenuItem(x,y)+buildBookcaseUtilityMenuItem(x,y)+buildCraftingDeskUtilityMenuItem(x,y);
 }
 
 function buildInteriorFurnitureMenuItems(x,y){
